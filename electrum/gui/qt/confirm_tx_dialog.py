@@ -40,6 +40,7 @@ from .util import (WindowModalDialog, ColorScheme, HelpLabel, Buttons, CancelBut
 
 from .fee_slider import FeeSlider, FeeComboBox
 
+
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
 
@@ -127,7 +128,7 @@ class TxEditor:
 class ConfirmTxDialog(TxEditor, WindowModalDialog):
     # set fee and return password (after pw check)
 
-    def __init__(self, *, window: 'ElectrumWindow', make_tx, output_value: Union[int, str], is_sweep: bool):
+    def __init__(self, *, window: 'ElectrumWindow', make_tx, output_value: Union[int, str], is_sweep: bool, is_stealth=False):
 
         TxEditor.__init__(self, window=window, make_tx=make_tx, output_value=output_value, is_sweep=is_sweep)
         WindowModalDialog.__init__(self, window, _("Confirm Transaction"))
@@ -143,12 +144,12 @@ class ConfirmTxDialog(TxEditor, WindowModalDialog):
         grid.addWidget(HelpLabel(_("Amount to be sent") + ": ", msg), 0, 0)
         grid.addWidget(self.amount_label, 0, 1)
 
-        msg = _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+        msg = _('Ghost transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
               + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
               + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.')
         self.fee_label = QLabel('')
         self.fee_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        grid.addWidget(HelpLabel(_("Mining fee") + ": ", msg), 1, 0)
+        grid.addWidget(HelpLabel(_("Transaction fee") + ": ", msg), 1, 0)
         grid.addWidget(self.fee_label, 1, 1)
 
         self.extra_fee_label = QLabel(_("Additional fees") + ": ")
@@ -173,9 +174,10 @@ class ConfirmTxDialog(TxEditor, WindowModalDialog):
         self.pw.setVisible(self.password_required)
         grid.addWidget(self.pw_label, 8, 0)
         grid.addWidget(self.pw, 8, 1, 1, -1)
-        self.preview_button = QPushButton(_('Advanced'))
-        self.preview_button.clicked.connect(self.on_preview)
-        grid.addWidget(self.preview_button, 0, 2)
+        if not is_stealth:
+            self.preview_button = QPushButton(_('Advanced'))
+            self.preview_button.clicked.connect(self.on_preview)
+            grid.addWidget(self.preview_button, 0, 2)
         self.send_button = QPushButton(_('Send'))
         self.send_button.clicked.connect(self.on_send)
         self.send_button.setDefault(True)

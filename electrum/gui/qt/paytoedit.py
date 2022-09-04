@@ -34,7 +34,7 @@ from PyQt5.QtWidgets import QApplication
 from electrum import bitcoin
 from electrum.util import bfh, parse_max_spend, FailedToParsePaymentIdentifier
 from electrum.transaction import PartialTxOutput
-from electrum.bitcoin import opcodes, construct_script
+from electrum.bitcoin import opcodes, construct_script, is_stealth_address
 from electrum.logging import Logger
 from electrum.lnurl import LNURLError
 
@@ -96,6 +96,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         self.is_alias = False
         self.update_size()
         self.payto_scriptpubkey = None  # type: Optional[bytes]
+        self.payto_stealth_address = None  # type: Optional[str]
         self.lightning_invoice = None
         self.previous_payto = ''
 
@@ -127,8 +128,15 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
             x, y = line.split(',')
         except ValueError:
             raise Exception("expected two comma-separated values: (address, amount)") from None
-        scriptpubkey = self.parse_output(x)
+        
         amount = self.parse_amount(y)
+        address = self.parse_address(x)
+        try:
+            if is_stealth_address(address):
+                return PartialTxOutput.from_address_and_value(address, amount)
+        except Exception as e:
+            raise e
+        scriptpubkey = self.parse_output(x)
         return PartialTxOutput(scriptpubkey=scriptpubkey, value=amount)
 
     def parse_output(self, x) -> bytes:
@@ -191,10 +199,11 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         self._check_text(full_check=True)
 
     def _check_text(self, *, full_check: bool):
+        self.payto_stealth_address = None  # Reset
         if self.previous_payto == str(self.toPlainText()).strip():
             return
-        if full_check:
-            self.previous_payto = str(self.toPlainText()).strip()
+        #if full_check:
+         #   self.previous_payto = str(self.toPlainText()).strip()
         self.errors = []
         if self.disable_checks:
             return
@@ -207,6 +216,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
 
         if len(lines) == 1:
             data = lines[0]
+            self.data = data
             try:
                 self.send_tab.handle_payment_identifier(data, can_use_network=full_check)
             except LNURLError as e:
@@ -223,6 +233,18 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
                 pass
             else:
                 return
+                
+            # try stealthaddress
+            try:
+                address = self.parse_address(data)
+                if is_stealth_address(address):
+                    self.payto_stealth_address = address
+                    self.send_tab.set_onchain(True)
+                    self.send_tab.lock_amount(False)
+                    return
+            except Exception as e:
+                pass
+            
             # try address/script
             try:
                 self.payto_scriptpubkey = self.parse_output(data)
@@ -281,6 +303,15 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         return self.payto_scriptpubkey
 
     def get_outputs(self, is_max: bool) -> List[PartialTxOutput]:
+        if self.payto_stealth_address:
+            if is_max:
+                amount = '!'
+            else:
+                amount = self.amount_edit.get_amount()
+                if amount is None:
+                    return []
+            self.outputs = [PartialTxOutput.from_address_and_value(self.payto_stealth_address, amount)]
+    
         if self.payto_scriptpubkey:
             if is_max:
                 amount = '!'

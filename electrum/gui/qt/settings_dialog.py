@@ -29,14 +29,18 @@ from typing import Optional, TYPE_CHECKING
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QComboBox,  QTabWidget, QDialog,
                              QSpinBox,  QFileDialog, QCheckBox, QLabel,
-                             QVBoxLayout, QGridLayout, QLineEdit,
-                             QPushButton, QWidget, QHBoxLayout)
+                             QVBoxLayout, QGridLayout, QLineEdit, QPlainTextEdit,
+                             QPushButton, QWidget, QHBoxLayout, QMessageBox)
 
 from electrum.i18n import _, languages
 from electrum import util, coinchooser, paymentrequest
 from electrum.util import base_units_list, event_listener
 
+from electrum.gui.qt.util import custom_message_box
 from electrum.gui import messages
+
+from electrum.wallet import decode_cs_changeaddress, process_cs_spend_addrs
+from electrum.bip32 import is_xpub
 
 from .util import (ColorScheme, WindowModalDialog, HelpLabel, Buttons,
                    CloseButton, QtEventListener)
@@ -65,6 +69,7 @@ class SettingsDialog(QDialog, QtEventListener):
 
         vbox = QVBoxLayout()
         tabs = QTabWidget()
+        cs_widgets = []
 
         # language
         lang_help = _('Select which language is used in the GUI (after restart).')
@@ -208,6 +213,51 @@ class SettingsDialog(QDialog, QtEventListener):
         self.alias_e = QLineEdit(alias)
         self.set_alias_color()
         self.alias_e.editingFinished.connect(self.on_alias_edit)
+        
+        
+        cs_wallet_label = QLabel(_('Wallet') + ':')
+        cs_wallet_value = QLabel(self.wallet.basename())
+        cs_widgets.append((cs_wallet_label, cs_wallet_value))
+        msg = _('Coldstaking change address.') + '\n\n'\
+              + 'For more information, see https://particl.wiki/tutorial/staking/cold-staking/'
+        cs_changeaddress_label = HelpLabel(_('Coldstaking Change Address') + ':', msg)
+        cs_changeaddress = self.wallet.db.get('cs_changeaddress','')
+        self.cs_changeaddress_e = QLineEdit(cs_changeaddress)
+        self.set_cs_changeaddress_color()
+        self.cs_changeaddress_e.editingFinished.connect(self.on_cs_changeaddress_edit)
+        cs_widgets.append((cs_changeaddress_label, self.cs_changeaddress_e))
+        
+        
+        msg = _('Changeaddress keys derived.') + '\n\n'\
+              + 'Number of keys derived if Changeaddress is an extaddress'
+        cs_changeaddress_derived_label = HelpLabel(_('Change Address Keys Derived') + ':', msg)
+        cs_changeaddress_derived = self.wallet.db.get('cs_changeaddress_derived','')
+        self.cs_changeaddress_derived_e = QLineEdit('')
+        try:
+            cs_changeaddress_derived = str(self.wallet.get_stakechangeaddressderives())
+            self.cs_changeaddress_derived_e.setDisabled(False)
+        except Exception as e:
+            cs_changeaddress_derived = ''
+            self.cs_changeaddress_derived_e.setDisabled(True)
+        self.cs_changeaddress_derived_e.setText(cs_changeaddress_derived)
+        #self.set_cs_changeaddress_color()
+        self.cs_changeaddress_derived_e.editingFinished.connect(self.on_cs_changeaddress_derived_edit)
+        cs_widgets.append((cs_changeaddress_derived_label, self.cs_changeaddress_derived_e))
+        
+        
+        msg = _('Coldstaking spend addresses.') + '\n\n'\
+              + 'Change will only be sent to an address from the list if any are set.\n'\
+              + 'Listed addresses must be spendable by the wallet.\n'\
+              + 'Add one per line. Address will be selected randomly when creating transactions.\n'\
+              + 'For more information, see https://particl.wiki/tutorial/staking/cold-staking/'
+        cs_spendaddresses_label = HelpLabel(_('Coldstaking Spend Addresses') + ':', msg)
+        cs_spendaddresses = self.wallet.db.get('cs_spendaddresses','')
+        self.cs_spendaddresses = QPlainTextEdit(cs_spendaddresses)
+        self.on_cs_spendaddresses_edit()  # Set colour
+        self.cs_spendaddresses.textChanged.connect(self.on_cs_spendaddresses_edit)
+        cs_widgets.append((cs_spendaddresses_label, self.cs_spendaddresses))
+
+
 
         msat_cb = QCheckBox(_("Show Lightning amounts with msat precision"))
         msat_cb.setChecked(bool(self.config.get('amt_precision_post_satoshi', False)))
@@ -222,7 +272,7 @@ class SettingsDialog(QDialog, QtEventListener):
         # units
         units = base_units_list
         msg = (_('Base unit of your wallet.')
-               + '\n1 BTC = 1000 mBTC. 1 mBTC = 1000 bits. 1 bit = 100 sat.\n'
+               + '\n1 GHOST = 1000 mGHOST. 1 mGHOST = 1000 bits. 1 bit = 100 sat.\n'
                + _('This setting affects the Send tab, and all balance related fields.'))
         unit_label = HelpLabel(_('Base unit') + ':', msg)
         unit_combo = QComboBox()
@@ -239,7 +289,7 @@ class SettingsDialog(QDialog, QtEventListener):
             self.app.refresh_amount_edits_signal.emit()
         unit_combo.currentIndexChanged.connect(lambda x: on_unit(x, nz))
 
-        thousandsep_cb = QCheckBox(_("Add thousand separators to bitcoin amounts"))
+        thousandsep_cb = QCheckBox(_("Add thousand separators to ghost amounts"))
         thousandsep_cb.setChecked(bool(self.config.get('amt_add_thousands_sep', False)))
         def on_set_thousandsep(v):
             checked = v == Qt.Checked
@@ -500,9 +550,9 @@ class SettingsDialog(QDialog, QtEventListener):
         gui_widgets.append((nz_label, nz))
         gui_widgets.append((msat_cb, None))
         gui_widgets.append((thousandsep_cb, None))
-        invoices_widgets = []
-        invoices_widgets.append((bolt11_fallback_cb, None))
-        invoices_widgets.append((bip21_lightning_cb, None))
+        #invoices_widgets = []
+        #invoices_widgets.append((bolt11_fallback_cb, None))
+        #invoices_widgets.append((bip21_lightning_cb, None))
         tx_widgets = []
         tx_widgets.append((usechange_cb, None))
         tx_widgets.append((use_rbf_cb, None))
@@ -514,11 +564,11 @@ class SettingsDialog(QDialog, QtEventListener):
         if len(choosers) > 1:
             tx_widgets.append((chooser_label, chooser_combo))
         tx_widgets.append((block_ex_label, block_ex_hbox_w))
-        lightning_widgets = []
-        lightning_widgets.append((recov_cb, None))
-        lightning_widgets.append((trampoline_cb, None))
-        lightning_widgets.append((instant_swaps_cb, None))
-        lightning_widgets.append((remote_wt_cb, self.watchtower_url_e))
+        #lightning_widgets = []
+        #lightning_widgets.append((recov_cb, None))
+        #lightning_widgets.append((trampoline_cb, None))
+        #lightning_widgets.append((instant_swaps_cb, None))
+        #lightning_widgets.append((remote_wt_cb, self.watchtower_url_e))
         fiat_widgets = []
         fiat_widgets.append((QLabel(_('Fiat currency')), ccy_combo))
         fiat_widgets.append((QLabel(_('Source')), ex_combo))
@@ -534,10 +584,11 @@ class SettingsDialog(QDialog, QtEventListener):
         tabs_info = [
             (gui_widgets, _('Appearance')),
             (tx_widgets, _('Transactions')),
-            (invoices_widgets, _('Invoices')),
-            (lightning_widgets, _('Lightning')),
+            #(invoices_widgets, _('Invoices')),
+            #(lightning_widgets, _('Lightning')),
             (fiat_widgets, _('Fiat')),
             (misc_widgets, _('Misc')),
+            (cs_widgets, _('ColdStaking')),
         ]
         for widgets, name in tabs_info:
             tab = QWidget()
@@ -588,3 +639,72 @@ class SettingsDialog(QDialog, QtEventListener):
         except TypeError:
             pass  # 'method' object is not connected
         event.accept()
+        
+    def set_cs_changeaddress_color(self):
+        if not self.wallet.db.get('cs_changeaddress'):
+            self.alias_e.setStyleSheet("")
+            return
+        cs_changeaddress = str(self.cs_changeaddress_e.text())
+
+        valid_addr = False
+        if cs_changeaddress != '':
+            try:
+                decode_cs_changeaddress(cs_changeaddress)
+                valid_addr = True
+            except Exception:
+                pass
+
+        if valid_addr:
+            self.cs_changeaddress_e.setStyleSheet(ColorScheme.GREEN.as_stylesheet(True))
+        else:
+            self.cs_changeaddress_e.setStyleSheet(ColorScheme.RED.as_stylesheet(True))
+
+    def on_cs_changeaddress_edit(self):
+        self.cs_changeaddress_e.setStyleSheet("")
+        cs_changeaddress = str(self.cs_changeaddress_e.text())
+
+        try:
+            self.wallet.set_cs_changeaddress(cs_changeaddress)
+            try:
+                self.cs_changeaddress_derived_e.setText(str(self.wallet.get_stakechangeaddressderives()))
+                self.cs_changeaddress_derived_e.setDisabled(False)
+            except Exception as e:
+                self.cs_changeaddress_derived_e.setText('')
+                self.cs_changeaddress_derived_e.setDisabled(True)
+        except Exception as e:
+            custom_message_box(icon=QMessageBox.Warning,
+                               parent=None,
+                               title=_('Error'),
+                               text=_('Cannot set coldstaking changeaddress') + ' (1):\n' + repr(e))
+                               
+    
+    def on_cs_changeaddress_derived_edit(self):
+        if not is_xpub(str(self.cs_changeaddress_e.text())):
+            return
+
+        try:
+            new_value = int(str(self.cs_changeaddress_derived_e.text()))
+            self.wallet.set_stakechangeaddressderives(new_value)
+        except Exception as e:
+            custom_message_box(icon=QMessageBox.Warning,
+                               parent=None,
+                               title=_('Error'),
+                               text=_('Cannot set coldstaking changeaddress keys derived') + ' (1):\n' + repr(e))
+
+
+    def on_cs_spendaddresses_edit(self):
+        new_text = self.cs_spendaddresses.toPlainText()
+        valid_data = True
+        try:
+            if new_text != '':
+                process_cs_spend_addrs(new_text)
+                self.cs_spendaddresses.setStyleSheet(ColorScheme.GREEN.as_stylesheet(True))
+        except Exception as e:
+            valid_data = False
+            self.cs_spendaddresses.setStyleSheet(ColorScheme.RED.as_stylesheet(True))
+            #custom_message_box(icon=QMessageBox.Warning,
+            #                   parent=None,
+            #                   title=_('Error'),
+            #                   text=_('Cannot set coldstaking spend addresses') + ' (1):\n' + repr(e))
+        if valid_data:
+            self.wallet.db.put('cs_spendaddresses', new_text)

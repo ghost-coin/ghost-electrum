@@ -80,7 +80,7 @@ class SwapDialog(WindowModalDialog):
         h.addWidget(self.recv_amount_e, 2, 1)
         h.addWidget(QLabel(_('Server fee')+':'), 4, 0)
         h.addWidget(self.server_fee_label, 4, 1, 1, 2)
-        h.addWidget(QLabel(_('Mining fee')+':'), 5, 0)
+        h.addWidget(QLabel(_('Transaction fee')+':'), 5, 0)
         h.addWidget(self.fee_label, 5, 1, 1, 2)
         h.addWidget(fee_slider, 6, 1)
         h.addWidget(fee_combo, 6, 2)

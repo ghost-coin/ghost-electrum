@@ -227,7 +227,7 @@ class Ledger_Client(HardwareClientBase):
                 self.perform_hw1_preflight()
             except BTChipException as e:
                 if (e.sw == 0x6d00 or e.sw == 0x6700):
-                    raise UserFacingException(_("Device not in Bitcoin mode")) from e
+                    raise UserFacingException(_("Device not in Ghost mode")) from e
                 raise e
             self.preflightDone = True
 
@@ -378,7 +378,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
             if not full_path:
                 self.give_error("No matching pubkey for sign_transaction")  # should never happen
             full_path = convert_bip32_intpath_to_strpath(full_path)[2:]
-
+            
             redeemScript = Transaction.get_preimage_script(txin)
             txin_prev_tx = txin.utxo
             if txin_prev_tx is None and not txin.is_segwit():
@@ -453,6 +453,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
                     chipInputs.append({'value' : tmp, 'witness' : True, 'sequence' : sequence})
                     redeemScripts.append(bfh(utxo[2]))
                 elif (not p2shTransaction) or client_electrum.supports_multi_output():
+                    print(utxo)
                     txtmp = bitcoinTransaction(bfh(utxo[0]))
                     trustedInput = client_ledger.getTrustedInput(txtmp, utxo[1])
                     trustedInput['sequence'] = sequence

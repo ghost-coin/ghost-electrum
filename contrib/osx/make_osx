@@ -241,7 +241,13 @@ if [ ! -z "$CODESIGN_CERT" ]; then
 fi
 
 info "Creating .DMG"
-hdiutil create -fs HFS+ -volname $PACKAGE -srcfolder dist/$PACKAGE.app dist/electrum-$VERSION.dmg || fail "Could not create .DMG"
+mkdir "dist/dmg_release"
+cp -r "dist/$PACKAGE.app" dist/dmg_release/
+pushd "dist/dmg_release"
+ln -s /Applications
+popd
+hdiutil create -fs HFS+ -volname "$PACKAGE" -srcfolder "dist/dmg_release" dist/electrum-$VERSION.dmg || fail "Could not create .DMG"
+rm -r "dist/dmg_release"
 
 DoCodeSignMaybe ".DMG" "dist/electrum-${VERSION}.dmg"
 

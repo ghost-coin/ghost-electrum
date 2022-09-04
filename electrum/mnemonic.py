@@ -261,6 +261,10 @@ def seed_type(x: str) -> str:
         return '2fa'
     elif is_new_seed(x, version.SEED_PREFIX_2FA_SW):
         return '2fa_segwit'
+    else:
+        from electrum.keystore import bip39_is_checksum_valid
+        if bip39_is_checksum_valid(x) == (True, True):
+            return 'bip39'
     return ''
 
 

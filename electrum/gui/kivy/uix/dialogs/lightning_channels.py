@@ -89,7 +89,7 @@ Builder.load_string(r'''
             orientation: 'horizontal'
             size_hint: 1, 0.5
             Label:
-                text: _('Mining Fee') + ':'
+                text: _('Transaction Fee') + ':'
                 size_hint: 0.4, 1
             Button:
                 text: root.mining_fee_text + ' (' + root.fee_rate_text + ')'

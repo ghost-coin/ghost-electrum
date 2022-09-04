@@ -40,8 +40,8 @@ def read_json(filename, default):
     return r
 
 
-GIT_REPO_URL = "https://github.com/spesmilo/electrum"
-GIT_REPO_ISSUES_URL = "https://github.com/spesmilo/electrum/issues"
+GIT_REPO_URL = "https://github.com/bleach86/electrum"
+GIT_REPO_ISSUES_URL = "https://github.com/bleach86/electrum/issues"
 BIP39_WALLET_FORMATS = read_json('bip39_wallet_formats.json', [])
 
 
@@ -53,6 +53,8 @@ class AbstractNet:
     ADDRTYPE_P2PKH: int
     ADDRTYPE_P2SH: int
     SEGWIT_HRP: str
+    STAKE_ONLY_PKADDR_HRP: str
+    ADDRTYPE_P2PKH256: int
     BOLT11_HRP: str
     GENESIS: str
     BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS: int = 0
@@ -68,43 +70,43 @@ class AbstractNet:
         return bytes.fromhex(bitcoin.rev_hex(cls.GENESIS))
 
 
-class BitcoinMainnet(AbstractNet):
+class GhostMainnet(AbstractNet):
 
     NET_NAME = "mainnet"
     TESTNET = False
-    WIF_PREFIX = 0x80
-    ADDRTYPE_P2PKH = 0
-    ADDRTYPE_P2SH = 5
-    SEGWIT_HRP = "bc"
+    WIF_PREFIX = 0xa6
+    ADDRTYPE_P2PKH = 0x26
+    ADDRTYPE_P2SH = 0x61
+    SEGWIT_HRP = "gw"
+    STAKE_ONLY_PKADDR_HRP = "gcs"
+    ADDRTYPE_P2PKH256 = 0x39
+    ADDRTYPE_STEALTH_ADDRESS = 0x14
     BOLT11_HRP = SEGWIT_HRP
-    GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
+    GENESIS = "00001e92daa9a7c945afdf3ce2736862b128f95c8966d3cda112caea98dd95f0"
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
-    DEFAULT_SERVERS = read_json('servers.json', {})
+    DEFAULT_SERVERS = [] # read_json('servers.json', {})
     CHECKPOINTS = read_json('checkpoints.json', [])
-    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 497000
+    BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 1497000
 
     XPRV_HEADERS = {
-        'standard':    0x0488ade4,  # xprv
-        'p2wpkh-p2sh': 0x049d7878,  # yprv
-        'p2wsh-p2sh':  0x0295b005,  # Yprv
-        'p2wpkh':      0x04b2430c,  # zprv
-        'p2wsh':       0x02aa7a99,  # Zprv
-    }
+        'standard':    0x8e8ea8ea}#,  # xprv
+        #'p2wpkh-p2sh': 0x0497347d,  # yprv
+        #'p2wsh-p2sh':  0x947e7a7a,  # Yprv
+        #'p2wpkh':      0x04abff11,  # zprv
+        #'p2wsh':       0x9934602a,  # Zprv
+    #}
     XPRV_HEADERS_INV = inv_dict(XPRV_HEADERS)
     XPUB_HEADERS = {
-        'standard':    0x0488b21e,  # xpub
-        'p2wpkh-p2sh': 0x049d7cb2,  # ypub
-        'p2wsh-p2sh':  0x0295b43f,  # Ypub
-        'p2wpkh':      0x04b24746,  # zpub
-        'p2wsh':       0x02aa7ed3,  # Zpub
-    }
+        'standard':    0x68df7cbd}#,  # xpub
+        #'p2wpkh-p2sh': 0x04945657,  # ypub
+        #'p2wsh-p2sh':  0x93d825fa,  # Ypub
+        #'p2wpkh':      0x04a920ea,  # zpub
+        #'p2wsh':       0x988e0b6a,  # Zpub
+    #}
     XPUB_HEADERS_INV = inv_dict(XPUB_HEADERS)
-    BIP44_COIN_TYPE = 0
-    LN_REALM_BYTE = 0
+    BIP44_COIN_TYPE = 44
+    LN_REALM_BYTE = 44
     LN_DNS_SEEDS = [
-        'nodes.lightning.directory.',
-        'lseed.bitcoinstats.com.',
-        'lseed.darosior.ninja',
     ]
 
 
@@ -184,7 +186,7 @@ class BitcoinSignet(BitcoinTestnet):
 NETS_LIST = tuple(all_subclasses(AbstractNet))
 
 # don't import net directly, import the module instead (so that net is singleton)
-net = BitcoinMainnet
+net = GhostMainnet
 
 def set_signet():
     global net
@@ -196,7 +198,7 @@ def set_simnet():
 
 def set_mainnet():
     global net
-    net = BitcoinMainnet
+    net = GhostMainnet
 
 def set_testnet():
     global net

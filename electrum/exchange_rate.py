@@ -335,9 +335,9 @@ class CoinDesk(ExchangeBase):
 class CoinGecko(ExchangeBase):
 
     async def get_rates(self, ccy):
-        json = await self.get_json('api.coingecko.com', '/api/v3/exchange_rates')
-        return dict([(ccy.upper(), to_decimal(d['value']))
-                     for ccy, d in json['rates'].items()])
+        json = await self.get_json('api.coingecko.com', '/api/v3/simple/price?ids=ghost-by-mcafee&vs_currencies=%s' % ccy)
+        result = {ccy: Decimal(json['ghost-by-mcafee'][ccy.lower()])}
+        return result
 
     def history_ccys(self):
         # CoinGecko seems to have historical data for all ccys it supports
@@ -345,7 +345,7 @@ class CoinGecko(ExchangeBase):
 
     async def request_history(self, ccy):
         history = await self.get_json('api.coingecko.com',
-                                      '/api/v3/coins/bitcoin/market_chart?vs_currency=%s&days=max' % ccy)
+                                      '/api/v3/coins/ghost-by-mcafee/market_chart?vs_currency=%s&days=max' % ccy)
 
         return dict([(datetime.utcfromtimestamp(h[0]/1000).strftime('%Y-%m-%d'), str(h[1]))
                      for h in history['prices']])

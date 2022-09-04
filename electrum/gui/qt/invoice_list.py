@@ -103,6 +103,9 @@ class InvoiceList(MyTreeView):
         self.update_headers(self.__class__.headers)
         for idx, item in enumerate(self.wallet.get_unpaid_invoices()):
             key = self.wallet.get_key_for_outgoing_invoice(item)
+            invoice = self.wallet.get_invoice(key)
+            if invoice is None:
+                continue
             if item.is_lightning():
                 icon_name = 'lightning.png'
             else:
@@ -162,7 +165,7 @@ class InvoiceList(MyTreeView):
             menu.addAction(_("Details"), lambda: self.parent.show_lightning_invoice(invoice))
         else:
             if len(invoice.outputs) == 1:
-                menu.addAction(_("Copy Address"), lambda: self.parent.do_copy(invoice.get_address(), title='Bitcoin Address'))
+                menu.addAction(_("Copy Address"), lambda: self.parent.do_copy(invoice.get_address(), title='Ghost Address'))
             menu.addAction(_("Details"), lambda: self.parent.show_onchain_invoice(invoice))
         status = wallet.get_invoice_status(invoice)
         if status == PR_UNPAID:

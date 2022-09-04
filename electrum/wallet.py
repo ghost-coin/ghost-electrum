@@ -61,7 +61,8 @@ from .util import (NotEnoughFunds, UserCancelled, profiler, OldTaskGroup, ignore
 from .simple_config import SimpleConfig, FEE_RATIO_HIGH_WARNING, FEERATE_WARNING_HIGH_FEE
 from .bitcoin import COIN, TYPE_ADDRESS
 from .bitcoin import is_address, address_to_script, is_minikey, relayfee, dust_threshold
-from .crypto import sha256d
+from .bitcoin import b58_address_to_hash160, DecodeBase58Check, hash160_to_p2pkh, EncodeBase58Check
+from .crypto import sha256d, ripemd
 from . import keystore
 from .keystore import (load_keystore, Hardware_KeyStore, KeyStore, KeyStoreWithMPK,
                        AddressIndexGeneric, CannotDerivePubkey)
@@ -84,6 +85,10 @@ from .lnworker import LNWallet
 from .paymentrequest import PaymentRequest
 from .util import read_json_file, write_json_file, UserFacingException
 from .util import EventListener, event_listener
+from . import segwit_addr
+from . import constants
+from .bip32 import is_xpub, BIP32Node
+from .transaction import OUTPUT_DATA
 
 if TYPE_CHECKING:
     from .network import Network
@@ -415,6 +420,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
 
     def can_have_lightning(self) -> bool:
         # we want static_remotekey to be a wallet address
+        return False
         return self.txin_type == 'p2wpkh'
 
     def can_have_deterministic_lightning(self) -> bool:
@@ -425,6 +431,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return self.keystore.can_have_deterministic_lightning_xprv()
 
     def init_lightning(self, *, password) -> None:
+        return
         assert self.can_have_lightning()
         assert self.db.get('lightning_xprv') is None
         assert self.db.get('lightning_privkey2') is None
@@ -545,7 +552,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             addr = str(addrs[0])
             if not bitcoin.is_address(addr):
                 neutered_addr = addr[:5] + '..' + addr[-2:]
-                raise WalletFileException(f'The addresses in this wallet are not bitcoin addresses.\n'
+                raise WalletFileException(f'The addresses in this wallet are not ghost addresses.\n'
                                           f'e.g. {neutered_addr} (length: {len(addr)})')
 
     def check_returned_address_for_corruption(func):
@@ -688,7 +695,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if self.is_watching_only():
             raise Exception(_("This is a watching-only wallet"))
         if not is_address(address):
-            raise Exception(f"Invalid bitcoin address: {address}")
+            raise Exception(f"Invalid ghost address: {address}")
         if not self.is_mine(address):
             raise Exception(_('Address not in wallet.') + f' {address}')
         index = self.get_address_index(address)
@@ -1505,7 +1512,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 addrs = self.get_change_addresses(slice_start=-self.gap_limit_for_change)
                 change_addrs = [random.choice(addrs)] if addrs else []
         for addr in change_addrs:
-            assert is_address(addr), f"not valid bitcoin address: {addr}"
+            assert is_address(addr), f"not valid ghost address: {addr}"
             # note that change addresses are not necessarily ismine
             # in which case this is a no-op
             self.check_address_for_corruption(addr)
@@ -1522,6 +1529,49 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         if addrs:
             return addrs[0]
         return None
+        
+    
+    def get_cs_changeaddress(self, default=None):
+        return self.db.get('cs_changeaddress', default)
+    
+    
+    def set_change_data_if_coldstaking(self, change_addrs):
+        cs_changeaddress = self.get_cs_changeaddress()
+        if cs_changeaddress is None or cs_changeaddress.strip() == '':
+           return change_addrs, None
+
+        cs_spendaddresses = self.db.get('cs_spendaddresses', None)
+        if cs_spendaddresses is not None:
+            constant_cs_change_addrs = process_cs_spend_addrs(cs_spendaddresses)
+            if len(constant_cs_change_addrs) > 0:
+                new_change_addrs = []
+                for addr in change_addrs:
+                    hash160 = ripemd(random.choice(constant_cs_change_addrs))
+                    addr_p2pkh = hash160_to_p2pkh(hash160, net=constants.net)
+                    new_change_addrs.append(addr_p2pkh)
+                change_addrs = new_change_addrs
+        stake_hash = decode_cs_changeaddress(cs_changeaddress)
+        
+        if type(stake_hash) is BIP32Node:
+            db_key = 'cs_ext_stake_offset_' + cs_changeaddress
+            key_offset = self.db.get(db_key, 0)
+            if key_offset >= 0x80000000:
+                raise ValueError('Stake change address key chain exhausted.')
+            path = (key_offset,)
+            subkey = stake_hash.subkey_at_public_derivation(path)
+            pk = subkey.eckey.get_public_key_bytes(compressed=True)
+            stake_hash = ripemd(sha256(pk))
+            self.db.put(db_key, key_offset + 1)
+        
+        change_data = {'stake_hash': stake_hash}
+        for addr in change_addrs:
+            addrtype, _ = b58_address_to_hash160(addr)
+            if addrtype != constants.net.ADDRTYPE_P2PKH:
+                raise ValueError(f'unknown address type for coldstaking change: {addrtype}')
+            change_data[addr] = bytes.fromhex(self.get_public_key(addr))
+            change_data[addr] = bytes.fromhex(self.get_public_key(addr))
+
+        return change_addrs, change_data
 
     @check_returned_address_for_corruption
     def get_new_sweep_address_for_channel(self) -> str:
@@ -1536,7 +1586,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 selected_addr = random.choice(addrs)
             else:  # fallback for e.g. imported wallets
                 selected_addr = self.get_receiving_address()
-        assert is_address(selected_addr), f"not valid bitcoin address: {selected_addr}"
+        assert is_address(selected_addr), f"not valid ghost address: {selected_addr}"
         return selected_addr
 
     def can_pay_onchain(self, outputs, coins=None):
@@ -1619,13 +1669,15 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 old_change_addrs = []
             # change address. if empty, coin_chooser will set it
             change_addrs = self.get_change_addresses_for_new_transaction(change_addr or old_change_addrs)
+            change_addrs, change_data = self.set_change_data_if_coldstaking(change_addrs)
             tx = coin_chooser.make_tx(
                 coins=coins,
                 inputs=txi,
                 outputs=list(outputs) + txo,
                 change_addrs=change_addrs,
                 fee_estimator_vb=fee_estimator,
-                dust_threshold=self.dust_threshold())
+                dust_threshold=self.dust_threshold(),
+                change_data=change_data)
         else:
             # "spend max" branch
             # note: This *will* spend inputs with negative effective value (if there are any).
@@ -1888,6 +1940,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             self.add_input_info(item)
         def fee_estimator(size):
             return self.config.estimate_fee_for_feerate(fee_per_kb=new_fee_rate*1000, size=size)
+        change_addrs, change_data = self.set_change_data_if_coldstaking(change_addrs)
         coin_chooser = coinchooser.get_coin_chooser(self.config)
         try:
             return coin_chooser.make_tx(
@@ -1896,7 +1949,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 outputs=fixed_outputs,
                 change_addrs=change_addrs,
                 fee_estimator_vb=fee_estimator,
-                dust_threshold=self.dust_threshold())
+                dust_threshold=self.dust_threshold(),
+                change_data=change_data)
         except NotEnoughFunds as e:
             raise CannotBumpFee(e)
 
@@ -2149,7 +2203,10 @@ class Abstract_Wallet(ABC, Logger, EventListener):
                 self.lnworker.swap_manager.add_txin_info(txin)
             return
         # set script_type first, as later checks might rely on it:
-        txin.script_type = self.get_txin_type(address)
+        #txin.script_type = self.get_txin_type(address)
+        
+        if txin.script_type in ('unknown', 'address'):  # Particl: don't overwrite existing type
+            txin.script_type = self.get_txin_type(address)
         txin.num_sig = self.m if isinstance(self, Multisig_Wallet) else 1
         if txin.redeem_script is None:
             try:
@@ -2181,15 +2238,24 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             for k in self.get_keystores():
                 if k.can_sign_txin(txin):
                     return True
+            if len(constant_cs_change_addrs) > 0:
+                new_change_addrs = []
+                for addr in change_addrs:
+                    hash160 = ripemd(random.choice(constant_cs_change_addrs))
+                    addr_p2pkh = hash160_to_p2pkh(hash160, net=constants.net)
+                    new_change_addrs.append(addr_p2pkh)
+                change_addrs = new_change_addrs
         if self.is_swap_tx(tx):
             return True
         return False
 
-    def get_input_tx(self, tx_hash: str, *, ignore_network_issues=False) -> Optional[Transaction]:
+    def get_input_tx(self, tx_hash: str, *, ignore_network_issues=False, local_only_lookup=False) -> Optional[Transaction]:
         # First look up an input transaction in the wallet where it
         # will likely be.  If co-signing a transaction it may not have
         # all the input txs, in which case we ask the network.
         tx = self.db.get_transaction(tx_hash)
+        if not tx and local_only_lookup:
+            return None
         if not tx and self.network and self.network.has_internet_connection():
             try:
                 raw_tx = self.network.run_from_another_thread(
@@ -2206,6 +2272,8 @@ class Abstract_Wallet(ABC, Logger, EventListener):
         return tx
 
     def add_output_info(self, txout: PartialTxOutput, *, only_der_suffix: bool = False) -> None:
+        if txout.output_type == OUTPUT_DATA:
+            return
         address = txout.address
         if not self.is_mine(address):
             is_mine = self._learn_derivation_path_for_address_from_txinout(txout, address)
@@ -2514,7 +2582,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             addr = req.get_address() or ""
             if sanity_checks:
                 if not bitcoin.is_address(addr):
-                    raise Exception(_('Invalid Bitcoin address.'))
+                    raise Exception(_('Invalid Ghost address.'))
                 if not self.is_mine(addr):
                     raise Exception(_('Address not in wallet.'))
             key = addr
@@ -2829,6 +2897,14 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             return None
         else:
             return allow_send, long_warning, short_warning
+            
+    def get_addr256(self, addr):
+        try:
+            pk = self.get_public_key(addr)
+        except Exception as e:
+            return 'Unknown'
+        pk_hash = sha256(bytes.fromhex(pk))
+        return EncodeBase58Check(bytes([constants.net.ADDRTYPE_P2PKH256]) + pk_hash)
 
     def get_help_texts_for_receive_request(self, req: Invoice) -> ReceiveRequestHelp:
         key = self.get_key_for_receive_request(req)
@@ -2898,6 +2974,98 @@ class Abstract_Wallet(ABC, Logger, EventListener):
     def synchronize(self) -> int:
         """Returns the number of new addresses we generated."""
         return 0
+        
+        
+    def set_cs_changeaddress(self, address_str_in):
+        address_str = address_str_in.strip()
+        if address_str != '':
+            decode_cs_changeaddress(address_str)
+        self.db.put('cs_changeaddress', address_str)
+        if address_str != '':
+            self.logger.info(f'Set cs spendchangeaddress {address_str[:4]}...{address_str[-4:]}')
+        else:
+            self.logger.info(f'Removed cs spendchangeaddress')
+        return True
+
+    def add_cs_spendchangeaddress(self, address_str):
+        address_str = address_str.strip()
+        addr_data = DecodeBase58Check(address_str)
+        if len(addr_data) != 33:
+            raise ValueError('Invalid 256bit address length')
+        if addr_data[0] != constants.net.ADDRTYPE_P2PKH256:
+            raise ValueError('Invalid 256bit address type')
+
+        addrs_str = self.db.get('cs_spendaddresses', '')
+        addrs = process_cs_spend_addrs(addrs_str)
+        if addr_data[1:] in addrs:
+            raise ValueError('Address exists')
+
+        if addrs_str != '':
+            addrs_str += '\n'
+        addrs_str += address_str
+        self.db.put('cs_spendaddresses', addrs_str)
+        self.logger.info(f'Added cs spendchangeaddress {address_str[:4]}...{address_str[-4:]}')
+        return True
+
+    def remove_cs_spendchangeaddress(self, address_str):
+        address_str = address_str.strip()
+        # Decode address to test validity
+        addr_data = DecodeBase58Check(address_str)
+        if len(addr_data) != 33:
+            raise ValueError('Invalid 256bit address length')
+        if addr_data[0] != constants.net.ADDRTYPE_P2PKH256:
+            raise ValueError('Invalid 256bit address type')
+            
+        addrs_str = self.db.get('cs_spendaddresses', '')
+        addrs = addrs_str.split('\n')
+        has_changed = False
+        addrs_out = []
+        for addr in addrs:
+            if addr == address_str:
+                has_changed = True
+            else:
+                addrs_out.append(addr)
+        self.db.put('cs_spendaddresses', '\n'.join(addrs_out))
+        self.logger.info(f'Removed cs spendchangeaddress {address_str[:4]}...{address_str[-4:]}')
+        return has_changed
+        
+    
+    def list_cs_spendchangeaddresses(self):
+        cs_spendaddresses = self.db.get('cs_spendaddresses', '')
+        pk_hashes = process_cs_spend_addrs(cs_spendaddresses)
+        rv = []
+        for ph_hash in pk_hashes:
+            rv.append(EncodeBase58Check(bytes([constants.net.ADDRTYPE_P2PKH256]) + ph_hash))
+        return rv
+        
+        
+    def get_stakechangeaddressderives(self, cs_changeaddress=None):
+        if cs_changeaddress is None:
+            cs_changeaddress = self.get_cs_changeaddress(None)
+
+        if cs_changeaddress is None:
+            raise ValueError('No stakechangeaddress specified or set.')
+
+        if not is_xpub(cs_changeaddress):
+            raise ValueError('Address must be an extkey.')
+
+        db_key = 'cs_ext_stake_offset_' + cs_changeaddress
+        return self.db.get(db_key, 0)
+
+    def set_stakechangeaddressderives(self, new_value):
+        cs_changeaddress = self.get_cs_changeaddress(None)
+        if cs_changeaddress is None or not is_xpub(cs_changeaddress):
+            raise ValueError('An extkey must be set as the stakechangeaddress to modify the number of keys derived.')
+
+        if new_value < 0:
+            raise ValueError('New value can\'t be less than 0.')
+        if new_value >= 0x80000000:
+            raise ValueError('New value can\'t be 0x80000000 or above.')
+
+        db_key = 'cs_ext_stake_offset_' + cs_changeaddress
+        self.db.put(db_key, new_value)
+        self.logger.info(f'Set cs stakechangeaddressderives to {new_value} for {cs_changeaddress[:6]}...{cs_changeaddress[-4:]}')
+        return True
 
 class Simple_Wallet(Abstract_Wallet):
     # wallet with a single keystore
@@ -3174,6 +3342,8 @@ class Deterministic_Wallet(Abstract_Wallet):
         # generate addresses now. note that without libsecp this might block
         # for a few seconds!
         self.synchronize()
+        
+        return
 
     def _init_lnworker(self):
         # lightning_privkey2 is not deterministic (legacy wallets, bip39)
@@ -3627,3 +3797,34 @@ def restore_wallet_from_text(text, *, path: Optional[str], config: SimpleConfig,
            "Start a daemon and use load_wallet to sync its history.")
     wallet.save_db()
     return {'wallet': wallet, 'msg': msg}
+    
+def decode_cs_changeaddress(address_str):
+    if is_xpub(address_str):
+        return BIP32Node.from_xkey(address_str)
+    decoded_bech32 = segwit_addr.bech32_decode(address_str)
+    hrp = decoded_bech32.hrp
+    data_5bits = decoded_bech32.data
+    if decoded_bech32.encoding is None:
+        raise ValueError("Bad bech32 checksum")
+    if decoded_bech32.encoding != segwit_addr.Encoding.BECH32:
+        raise ValueError("Bad bech32 encoding: must be using vanilla BECH32")
+    if hrp != constants.net.STAKE_ONLY_PKADDR_HRP:
+        raise Exception('unexpected hrp: {}'.format(hrp))
+    data_8bits = segwit_addr.convertbits(data_5bits, 5, 8, False)
+    return bytes(data_8bits)
+    
+    
+def process_cs_spend_addrs(addresses_str):
+    addresses = addresses_str.split('\n')
+    pk_hashes = []
+    for addr in addresses:
+        addr = addr.strip()
+        if addr == '':
+            continue
+        addr_data = DecodeBase58Check(addr)
+        if len(addr_data) != 33:
+            raise ValueError('Invalid 256bit address length')
+        if addr_data[0] != constants.net.ADDRTYPE_P2PKH256:
+            raise ValueError('Invalid 256bit address type')
+        pk_hashes.append(addr_data[1:])
+    return pk_hashes

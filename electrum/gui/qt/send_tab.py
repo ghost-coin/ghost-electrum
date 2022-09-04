@@ -24,6 +24,7 @@ from electrum.network import TxBroadcastError, BestEffortRequestFailed
 from electrum.logging import Logger
 from electrum.lnaddr import lndecode, LnInvoiceException
 from electrum.lnurl import decode_lnurl, request_lnurl, callback_lnurl, LNURLError, LNURL6Data
+from electrum.bitcoin import is_stealth_address
 
 from .amountedit import AmountEdit, BTCAmountEdit, SizedFreezableLineEdit
 from .util import WaitingDialog, HelpLabel, MessageBoxMixin, EnterButton, char_width_in_lineedit
@@ -234,7 +235,11 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             output_value = '!'
         else:
             output_value = sum(output_values)
-        conf_dlg = ConfirmTxDialog(window=self.window, make_tx=make_tx, output_value=output_value, is_sweep=is_sweep)
+        
+        # Disable Advanced button if output is a stealth address    
+        is_stealth = is_stealth_address(self.payto_e.data)
+        
+        conf_dlg = ConfirmTxDialog(window=self.window, make_tx=make_tx, output_value=output_value, is_sweep=is_sweep, is_stealth=is_stealth)
         if conf_dlg.not_enough_funds:
             # Check if we had enough funds excluding fees,
             # if so, still provide opportunity to set lower fees.
@@ -508,6 +513,11 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
                 if self.check_send_tab_onchain_outputs_and_show_errors(outputs):
                     return
                 message = self.message_e.text()
+                if self.payto_e and self.payto_e.payto_stealth_address:
+                    sxaddr = self.payto_e.payto_stealth_address
+                    message = 'sx: ' + sxaddr[:8] + '...' + sxaddr[-6:] + ' ' + message
+                    self.payto_e.payto_stealth_address = None
+                    
                 return self.wallet.create_invoice(
                     outputs=outputs,
                     message=message,

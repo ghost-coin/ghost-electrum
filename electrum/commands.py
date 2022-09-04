@@ -51,7 +51,7 @@ from .transaction import (Transaction, multisig_script, TxOutput, PartialTransac
                           tx_from_any, PartialTxInput, TxOutpoint)
 from .invoices import PR_PAID, PR_UNPAID, PR_UNKNOWN, PR_EXPIRED
 from .synchronizer import Notifier
-from .wallet import Abstract_Wallet, create_new_wallet, restore_wallet_from_text, Deterministic_Wallet, BumpFeeStrategy
+from .wallet import Abstract_Wallet, create_new_wallet, restore_wallet_from_text, Deterministic_Wallet, BumpFeeStrategy, process_cs_spend_addrs
 from .address_synchronizer import TX_HEIGHT_LOCAL
 from .mnemonic import Mnemonic
 from .lnutil import SENT, RECEIVED
@@ -352,7 +352,7 @@ class Commands:
         """List unspent outputs. Returns the list of unspent transaction
         outputs in your wallet."""
         coins = []
-        for txin in wallet.get_utxos():
+        for txin in wallet.get_utxos(inspect_scripts=True):
             d = txin.to_json()
             v = d.pop("value_sats")
             d["value"] = str(Decimal(v)/COIN) if v is not None else None
@@ -1309,6 +1309,49 @@ class Commands:
             'lightning_amount': format_satoshis(lightning_amount_sat),
             'onchain_amount': format_satoshis(onchain_amount_sat),
         }
+        
+    @command('w')
+    async def cs_view_stakechangeaddress(self, wallet: Abstract_Wallet = None):
+        """View coldstakingchangeaddress."""
+        return wallet.db.get('cs_changeaddress', '')
+
+    @command('w')
+    async def cs_set_stakechangeaddress(self, new_addr: str, wallet: Abstract_Wallet = None):
+        """Set coldstakingchangeaddress."""
+        wallet.set_cs_changeaddress(new_addr)
+        return True
+
+    @command('w')
+    async def cs_list_spendchangeaddresses(self, wallet: Abstract_Wallet = None):
+        """List coldstakingspendchangeaddresses."""
+        return wallet.list_cs_spendchangeaddresses()
+
+    @command('w')
+    async def cs_add_spendchangeaddress(self, addr: str, wallet: Abstract_Wallet = None):
+        """Add coldstakingspendchangeaddresses."""
+        return wallet.add_cs_spendchangeaddress(addr)
+
+    @command('w')
+    async def cs_remove_spendchangeaddress(self, addr: str, wallet: Abstract_Wallet = None):
+        """Remove coldstakingspendchangeaddress."""
+        return wallet.remove_coldstakingspendchangeaddress(addr)
+        
+    
+    @command('w')
+    async def cs_show_256bit_address(self, address, wallet: Abstract_Wallet = None):
+        """Return the 256bit address of the public key for the provided wallet address. """
+        return wallet.get_addr256(address)
+        
+    
+    @command('wn')
+    async def cs_get_stakechangeaddressderives(self, address=None, wallet: Abstract_Wallet = None):
+        """Return the number of keys derived from an extkey stakechangeaddress. """
+        return wallet.get_stakechangeaddressderives(address)
+
+    @command('w')
+    async def cs_set_stakechangeaddressderives(self, new_value: str, wallet: Abstract_Wallet = None):
+        """Set the number of keys derived from an extkey stakechangeaddress. """
+        return wallet.set_stakechangeaddressderives(new_value)
 
 
 def eval_bool(x: str) -> bool:
@@ -1321,8 +1364,8 @@ def eval_bool(x: str) -> bool:
 
 param_descriptions = {
     'privkey': 'Private key. Type \'?\' to get a prompt.',
-    'destination': 'Bitcoin address, contact or alias',
-    'address': 'Bitcoin address',
+    'destination': 'Ghost address, contact or alias',
+    'address': 'Ghost address',
     'seed': 'Seed phrase',
     'txid': 'Transaction ID',
     'pos': 'Position',
@@ -1332,8 +1375,8 @@ param_descriptions = {
     'pubkey': 'Public key',
     'message': 'Clear text message. Use quotes if it contains spaces.',
     'encrypted': 'Encrypted message',
-    'amount': 'Amount to be sent (in BTC). Type \'!\' to send the maximum available.',
-    'requested_amount': 'Requested amount (in BTC).',
+    'amount': 'Amount to be sent (in GHOST). Type \'!\' to send the maximum available.',
+    'requested_amount': 'Requested amount (in GHOST).',
     'outputs': 'list of ["address", amount]',
     'redeem_script': 'redeem script (hexadecimal)',
     'lightning_amount': "Amount sent or received in a submarine swap. Set it to 'dryrun' to receive a value",
@@ -1353,7 +1396,7 @@ command_options = {
     'labels':      ("-l", "Show the labels of listed addresses"),
     'nocheck':     (None, "Do not verify aliases"),
     'imax':        (None, "Maximum number of inputs"),
-    'fee':         ("-f", "Transaction fee (absolute, in BTC)"),
+    'fee':         ("-f", "Transaction fee (absolute, in GHOST)"),
     'feerate':     (None, "Transaction fee rate (in sat/byte)"),
     'from_addr':   ("-F", "Source address (must be a wallet address; use sweep to spend from non-wallet address)."),
     'from_coins':  (None, "Source coins (must be in wallet; use sweep to spend from non-wallet address)."),
@@ -1373,7 +1416,7 @@ command_options = {
     'timeout':     (None, "Timeout in seconds"),
     'force':       (None, "Create new address beyond gap limit, if no more addresses are available."),
     'pending':     (None, "Show only pending requests."),
-    'push_amount': (None, 'Push initial amount (in BTC)'),
+    'push_amount': (None, 'Push initial amount (in GHOST)'),
     'expired':     (None, "Show only expired requests."),
     'paid':        (None, "Show only paid requests."),
     'show_addresses': (None, "Show input and output addresses"),
@@ -1389,6 +1432,7 @@ command_options = {
     'connection_string':      (None, "Lightning network node ID or network address"),
     'new_fee_rate': (None, "The Updated/Increased Transaction fee rate (in sat/byte)"),
     'strategies': (None, "Select RBF any one or multiple RBF strategies in any order, separated by ','; Options : 'CoinChooser','DecreaseChange','DecreasePayment' "),
+    'address': (None, "Address, the currently active cs stakechange address is used if not set."),
 }
 
 
@@ -1416,6 +1460,7 @@ arg_types = {
     'encrypt_file': eval_bool,
     'rbf': eval_bool,
     'timeout': float,
+    'address': str,
 }
 
 config_variables = {
@@ -1423,10 +1468,10 @@ config_variables = {
     'addrequest': {
         'ssl_privkey': 'Path to your SSL private key, needed to sign the request.',
         'ssl_chain': 'Chain of SSL certificates, needed for signed requests. Put your certificate at the top and the root CA at the end',
-        'url_rewrite': 'Parameters passed to str.replace(), in order to create the r= part of bitcoin: URIs. Example: \"(\'file:///var/www/\',\'https://electrum.org/\')\"',
+        'url_rewrite': 'Parameters passed to str.replace(), in order to create the r= part of ghost: URIs. Example: \"(\'file:///var/www/\',\'https://electrum.org/\')\"',
     },
     'listrequests':{
-        'url_rewrite': 'Parameters passed to str.replace(), in order to create the r= part of bitcoin: URIs. Example: \"(\'file:///var/www/\',\'https://electrum.org/\')\"',
+        'url_rewrite': 'Parameters passed to str.replace(), in order to create the r= part of ghost: URIs. Example: \"(\'file:///var/www/\',\'https://electrum.org/\')\"',
     }
 }
 
@@ -1519,7 +1564,7 @@ def get_parser():
     subparsers = parser.add_subparsers(dest='cmd', metavar='<command>')
     # gui
     parser_gui = subparsers.add_parser('gui', description="Run Electrum's Graphical User Interface.", help="Run GUI (default)")
-    parser_gui.add_argument("url", nargs='?', default=None, help="bitcoin URI (or bip70 file)")
+    parser_gui.add_argument("url", nargs='?', default=None, help="ghost URI (or bip70 file)")
     parser_gui.add_argument("-g", "--gui", dest="gui", help="select graphical user interface", choices=['qt', 'kivy', 'text', 'stdio', 'qml'])
     parser_gui.add_argument("-m", action="store_true", dest="hide_gui", default=False, help="hide GUI on startup")
     parser_gui.add_argument("-L", "--lang", dest="language", default=None, help="default language used in GUI")

@@ -29,6 +29,7 @@ from .dialogs.confirm_tx_dialog import ConfirmTxDialog
 
 from electrum.gui.kivy import KIVY_GUI_PATH
 from electrum.gui.kivy.i18n import _
+from electrum.bitcoin import is_stealth_address
 
 if TYPE_CHECKING:
     from electrum.gui.kivy.main_window import ElectrumWindow
@@ -325,7 +326,7 @@ class SendScreen(CScreen, Logger):
     def read_invoice(self):
         address = str(self.address)
         if not address:
-            self.app.show_error(_('Recipient not specified.') + ' ' + _('Please scan a Bitcoin address or a payment request'))
+            self.app.show_error(_('Recipient not specified.') + ' ' + _('Please scan a Ghost address or a payment request'))
             return
         if not self.amount:
             self.app.show_error(_('Please enter an amount'))
@@ -339,6 +340,8 @@ class SendScreen(CScreen, Logger):
                 self.app.show_error(_('Invalid amount') + ':\n' + self.amount)
                 return
         message = self.message
+        if is_stealth_address(address):
+            message = 'sx: ' + address[:8] + '...' + address[-6:] + ' ' + message
         try:
             if self.is_lightning:
                 assert type(amount_sat) is int
@@ -352,7 +355,7 @@ class SendScreen(CScreen, Logger):
                     outputs = self.payment_request.get_outputs()
                 else:
                     if not bitcoin.is_address(address):
-                        self.app.show_error(_('Invalid Bitcoin Address') + ':\n' + address)
+                        self.app.show_error(_('Invalid Ghost Address') + ':\n' + address)
                         return
                     outputs = [PartialTxOutput.from_address_and_value(address, amount_sat)]
                 return self.app.wallet.create_invoice(

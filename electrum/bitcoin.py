@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 COINBASE_MATURITY = 100
 COIN = 100000000
-TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 21000000
+TOTAL_COIN_SUPPLY_LIMIT_IN_BTC = 55000000
 
 NLOCKTIME_MIN = 0
 NLOCKTIME_BLOCKHEIGHT_MAX = 500_000_000 - 1
@@ -189,6 +189,7 @@ class opcodes(IntEnum):
     OP_NOP7 = 0xb6
     OP_NOP8 = 0xb7
     OP_NOP9 = 0xb8
+    OP_ISCOINSTAKE = OP_NOP9
     OP_NOP10 = 0xb9
 
     OP_INVALIDOPCODE = 0xff
@@ -381,6 +382,12 @@ def hash160_to_b58_address(h160: bytes, addrtype: int) -> str:
     return base_encode(s, base=58)
 
 
+def hash256_to_b58_address(h256: bytes, addrtype: int) -> str:
+    s = bytes([addrtype]) + h256
+    s = s + sha256d(s)[0:4]
+    return base_encode(s, base=58)
+
+
 def b58_address_to_hash160(addr: str) -> Tuple[int, bytes]:
     addr = to_bytes(addr, 'ascii')
     _bytes = DecodeBase58Check(addr)
@@ -392,6 +399,12 @@ def b58_address_to_hash160(addr: str) -> Tuple[int, bytes]:
 def hash160_to_p2pkh(h160: bytes, *, net=None) -> str:
     if net is None: net = constants.net
     return hash160_to_b58_address(h160, net.ADDRTYPE_P2PKH)
+    
+
+def hash256_to_p2pkh(h256: bytes, *, net=None) -> str:
+    if net is None: net = constants.net
+    return hash256_to_b58_address(h256, net.ADDRTYPE_P2PKH256)
+
 
 def hash160_to_p2sh(h160: bytes, *, net=None) -> str:
     if net is None: net = constants.net
@@ -461,7 +474,7 @@ def script_to_address(script: str, *, net=None) -> str:
 def address_to_script(addr: str, *, net=None) -> str:
     if net is None: net = constants.net
     if not is_address(addr, net=net):
-        raise BitcoinException(f"invalid bitcoin address: {addr}")
+        raise BitcoinException(f"invalid ghost address: {addr}")
     witver, witprog = segwit_addr.decode_segwit_address(net.SEGWIT_HRP, addr)
     if witprog is not None:
         if not (0 <= witver <= 16):
@@ -492,7 +505,7 @@ def address_to_payload(addr: str, *, net=None) -> Tuple[OnchainOutputType, bytes
     """Return (type, pubkey hash / witness program) for an address."""
     if net is None: net = constants.net
     if not is_address(addr, net=net):
-        raise BitcoinException(f"invalid bitcoin address: {addr}")
+        raise BitcoinException(f"invalid ghost address: {addr}")
     witver, witprog = segwit_addr.decode_segwit_address(net.SEGWIT_HRP, addr)
     if witprog is not None:
         if witver == 0:
@@ -748,10 +761,49 @@ def is_b58_address(addr: str, *, net=None) -> bool:
         return False
     return True
 
+
+def is_stealth_address(addr: str, *, net=None) -> bool:
+    if net is None: net = constants.net
+    try:
+        addr = to_bytes(addr, 'ascii')
+        _bytes = DecodeBase58Check(addr)
+    except Exception as e:
+        return False
+    if len(_bytes) < 71:  # version + 70bytes
+        return False
+    if _bytes[0] != net.ADDRTYPE_STEALTH_ADDRESS:
+        return False
+    if _bytes[35] != 1:
+        return False  # Multiple spend keys not supported
+    if _bytes[69] != 0:
+        return False  # Multiple signatures not supported
+    return True
+
+
+def decode_stealth_address(addr: str, *, net=None) -> Tuple[bytes, bytes]:
+    if net is None: net = constants.net
+    try:
+        addr = to_bytes(addr, 'ascii')
+        _bytes = DecodeBase58Check(addr)
+    except Exception as e:
+        return None, None
+    if len(_bytes) < 70:  # version + 70bytes
+        return None, None
+    if _bytes[0] != net.ADDRTYPE_STEALTH_ADDRESS:
+        return None, None
+
+    if _bytes[35] != 1:
+        return None, None  # Multiple spend keys not supported
+    if _bytes[69] != 0:
+        return None, None  # Multiple signatures not supported
+    return _bytes[2:35], _bytes[36:69]
+
+
 def is_address(addr: str, *, net=None) -> bool:
     if net is None: net = constants.net
     return is_segwit_address(addr, net=net) \
-           or is_b58_address(addr, net=net)
+           or is_b58_address(addr, net=net) \
+           or is_stealth_address(addr, net=net)
 
 
 def is_private_key(key: str, *, raise_on_error=False) -> bool:

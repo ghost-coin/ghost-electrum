@@ -55,7 +55,7 @@ Builder.load_string('''
                 SettingsItem:
                     bu: app.base_unit
                     title: _('Denomination') + ': ' + self.bu
-                    description: _("Base unit for Bitcoin amounts.")
+                    description: _("Base unit for Ghost amounts.")
                     action: partial(root.unit_dialog, self)
                 CardSeparator
                 SettingsItem:
@@ -102,6 +102,14 @@ Builder.load_string('''
                     title: _('Lightning Routing') + ': ' + self.status
                     description: _("Use trampoline routing or gossip.")
                     action: partial(root.routing_dialog, self)
+                    
+                    
+                CardSeparator
+                SettingsItem:
+                    cs_changeaddress: root.get_cs_changeaddress()
+                    title: _('Coldstaking') + ': ' + self.cs_changeaddress
+                    description: _("Configure Coldstaking.")
+                    action: partial(root.cs_dialog, self)
 
                 # disabled: there is currently only one coin selection policy
                 #CardSeparator
@@ -129,6 +137,7 @@ class SettingsDialog(Factory.Popup):
         self._language_dialog = None
         self._unit_dialog = None
         self._coinselect_dialog = None
+        self._cs_dialog = None
 
         self.update()
 
@@ -259,3 +268,17 @@ class SettingsDialog(Factory.Popup):
                 label.status = self.fx_status()
             self._fx_dialog = FxDialog(self.app, self.plugins, self.config, cb)
         self._fx_dialog.open()
+        
+        
+    def get_cs_changeaddress(self):
+        cs_changeaddress = self.app.wallet.get_cs_changeaddress(default='')
+        return 'Disabled' if cs_changeaddress == '' else cs_changeaddress
+
+    def cs_dialog(self, label, dt):
+        if self._cs_dialog is None:
+            from .cs_dialog import CSDialog
+            def cb():
+                label.cs_changeaddress = self.get_cs_changeaddress()
+            self._cs_dialog = CSDialog(self.app, self.plugins, self.config, cb)
+        self._cs_dialog.set_data()
+        self._cs_dialog.open()

@@ -36,6 +36,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.wallet = window.wallet
         self.fx = window.fx
         self.config = window.config
+        #self.wallet = Abstract_Wallet()
 
         # A 4-column grid layout.  All the stretch is in the last column.
         # The exchange rate plugin adds a fiat widget in column 2
@@ -114,6 +115,9 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.receive_lightning_help_text = WWLabel('')
         self.receive_rebalance_button = QPushButton('Rebalance')
         self.receive_rebalance_button.suggestion = None
+        
+        self.receive_address_256_e = ButtonsTextEdit()
+        
         def on_receive_rebalance():
             if self.receive_rebalance_button.suggestion:
                 chan1, chan2, delta = self.receive_rebalance_button.suggestion
@@ -139,12 +143,13 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.receive_URI_qr = QRCodeWidget()
         self.receive_lightning_qr = QRCodeWidget()
 
-        for e in [self.receive_address_e, self.receive_URI_e, self.receive_lightning_e]:
+        for e in [self.receive_address_e, self.receive_URI_e, self.receive_lightning_e, self.receive_address_256_e]:
             e.setFont(QFont(MONOSPACE_FONT))
             e.addCopyButton()
             e.setReadOnly(True)
 
         self.receive_lightning_e.textChanged.connect(self.update_receive_widgets)
+        self.receive_address_256_e.textChanged.connect(self.update_receive_address_256_styling)
 
         self.receive_address_widget = ReceiveTabWidget(self,
             self.receive_address_e, self.receive_address_qr, self.receive_address_help)
@@ -160,6 +165,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         #self.receive_tabs.setMinimumHeight(ReceiveTabWidget.min_size.height() + 4) # for margins
         self.receive_tabs.addTab(self.receive_URI_widget, read_QIcon("link.png"), _('URI'))
         self.receive_tabs.addTab(self.receive_address_widget, read_QIcon("bitcoin.png"), _('Address'))
+        self.receive_tabs.addTab(self.receive_address_256_e, read_QIcon("bitcoin.png"), _('256bit Address'))
         self.receive_tabs.addTab(self.receive_lightning_widget, read_QIcon("lightning.png"), _('Lightning'))
         self.receive_tabs.currentChanged.connect(self.update_receive_qr_window)
         self.receive_tabs.setCurrentIndex(self.config.get('receive_tabs_index', 0))
@@ -215,6 +221,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
             self.receive_URI_e.setText('')
             self.receive_lightning_e.setText('')
             self.receive_address_e.setText('')
+            self.receive_address_256_e.setText('')
             return
         help_texts = self.wallet.get_help_texts_for_receive_request(req)
         addr = (req.get_address() or '') if not help_texts.address_is_error else ''
@@ -238,6 +245,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         # alphanumeric mode; resulting in smaller QR codes
         lnaddr_qr = lnaddr.upper()
         self.receive_address_e.setText(addr)
+        self.receive_address_256_e.setText(self.wallet.get_addr256(addr))
         self.receive_address_qr.setData(addr)
         self.receive_address_help_text.setText(address_help)
         self.receive_URI_e.setText(URI)
@@ -253,6 +261,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.receive_lightning_e.repaint()
         self.receive_URI_e.repaint()
         self.receive_address_e.repaint()
+        self.receive_address_256_e.repaint()
         # always show
         self.receive_tabs.setVisible(True)
         self.update_receive_qr_window()
@@ -346,6 +355,11 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
                     return
                 addr = self.wallet.create_new_address(False)
         return addr
+        
+    def update_receive_address_256_styling(self):
+        addr = str(self.receive_address_e.text())
+        self.receive_address_256_e.setStyleSheet("")
+        self.receive_address_256_e.setToolTip("")
 
     def do_clear(self):
         self.receive_address_e.setText('')

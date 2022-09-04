@@ -34,7 +34,7 @@ from .logging import describe_os_version, Logger, get_git_version
 
 
 class BaseCrashReporter(Logger):
-    report_server = "https://crashhub.electrum.org"
+    report_server = "https://not.set"
     config_key = "show_crash_reporter"
     issue_template = """<h2>Traceback</h2>
 <pre>

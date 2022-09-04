@@ -1092,17 +1092,36 @@ def purpose48_derivation(account_id: int, xtype: str) -> str:
     return normalize_bip32_derivation(der)
 
 
+def legacy_multisig_derivation(account_id: int) -> str:
+    # m / purpose' / coin_type' / account
+    coin = constants.net.BIP44_COIN_TYPE
+    account_id = int(account_id)
+    der = "m/%d'/%d'/%d" % (45, coin, account_id)
+    return normalize_bip32_derivation(der)
+
+
 def from_seed(seed, passphrase, is_p2sh=False):
     t = seed_type(seed)
     if t == 'old':
         keystore = Old_KeyStore({})
         keystore.add_seed(seed)
+    if t == 'bip39':
+        keystore = BIP32_KeyStore({})
+        keystore.add_seed(seed)
+        keystore.passphrase = passphrase
+        bip32_seed = bip39_to_seed(seed, passphrase)
+        der = bip44_derivation(0)
+        xtype = 'standard'
+        keystore.add_xprv_from_seed(bip32_seed, xtype, der)
     elif t in ['standard', 'segwit']:
         keystore = BIP32_KeyStore({})
         keystore.add_seed(seed)
         keystore.passphrase = passphrase
         bip32_seed = Mnemonic.mnemonic_to_seed(seed, passphrase)
         if t == 'standard':
+            der = "m/"
+            xtype = 'standard'
+        elif t == 'bip39':
             der = "m/"
             xtype = 'standard'
         else:

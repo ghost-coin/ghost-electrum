@@ -415,7 +415,7 @@ class LNWorker(Logger, EventListener, NetworkRetryManager[LNPeerAddr]):
         # getting desperate... let's try hardcoded fallback list of peers
         if constants.net in (constants.BitcoinTestnet,):
             fallback_list = FALLBACK_NODE_LIST_TESTNET
-        elif constants.net in (constants.BitcoinMainnet,):
+        elif constants.net in (constants.GhostMainnet,):
             fallback_list = FALLBACK_NODE_LIST_MAINNET
         else:
             return []  # regtest??

@@ -27,9 +27,9 @@ from math import floor, log10
 from typing import NamedTuple, List, Callable, Sequence, Union, Dict, Tuple
 from decimal import Decimal
 
-from .bitcoin import sha256, COIN, is_address
-from .transaction import Transaction, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput
-from .util import NotEnoughFunds
+from .bitcoin import sha256, COIN, is_address, construct_script
+from .transaction import Transaction, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput, opcodes
+from .util import NotEnoughFunds, bfh
 from .logging import Logger
 
 
@@ -208,7 +208,7 @@ class CoinChooserBase(Logger):
         return amounts
 
     def _change_outputs(self, tx: PartialTransaction, change_addrs, fee_estimator_numchange,
-                        dust_threshold) -> List[PartialTxOutput]:
+                        dust_threshold, change_data=None) -> List[PartialTxOutput]:
         amounts = self._change_amounts(tx, len(change_addrs), fee_estimator_numchange)
         assert min(amounts) >= 0
         assert len(change_addrs) >= len(amounts)
@@ -216,14 +216,30 @@ class CoinChooserBase(Logger):
         # If change is above dust threshold after accounting for the
         # size of the change output, add it to the transaction.
         amounts = [amount for amount in amounts if amount >= dust_threshold]
-        change = [PartialTxOutput.from_address_and_value(addr, amount)
-                  for addr, amount in zip(change_addrs, amounts)]
+        if change_data:
+            change = []
+            stake_key_hash = change_data['stake_hash']
+            for addr, amount in zip(change_addrs, amounts):
+                change_pubkey = change_data[addr]
+                spend_pubkey_hash = sha256(change_pubkey)
+
+                script = bfh(construct_script([
+                    opcodes.OP_ISCOINSTAKE, opcodes.OP_IF, opcodes.OP_DUP, opcodes.OP_HASH160,
+                    stake_key_hash,
+                    opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG,
+                    opcodes.OP_ELSE, opcodes.OP_DUP, opcodes.OP_SHA256,
+                    spend_pubkey_hash,
+                    opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF]))
+                change.append(PartialTxOutput(value=amount, scriptpubkey=script))
+        else:
+            change = [PartialTxOutput.from_address_and_value(addr, amount)
+                      for addr, amount in zip(change_addrs, amounts)]
         return change
 
     def _construct_tx_from_selected_buckets(self, *, buckets: Sequence[Bucket],
                                             base_tx: PartialTransaction, change_addrs,
                                             fee_estimator_w, dust_threshold,
-                                            base_weight) -> Tuple[PartialTransaction, List[PartialTxOutput]]:
+                                            base_weight, change_data=None) -> Tuple[PartialTransaction, List[PartialTxOutput]]:
         # make a copy of base_tx so it won't get mutated
         tx = PartialTransaction.from_io(base_tx.inputs()[:], base_tx.outputs()[:])
 
@@ -240,7 +256,7 @@ class CoinChooserBase(Logger):
         # This takes a count of change outputs and returns a tx fee
         output_weight = 4 * Transaction.estimated_output_size_for_address(change_addrs[0])
         fee_estimator_numchange = lambda count: fee_estimator_w(tx_weight + count * output_weight)
-        change = self._change_outputs(tx, change_addrs, fee_estimator_numchange, dust_threshold)
+        change = self._change_outputs(tx, change_addrs, fee_estimator_numchange, dust_threshold, change_data)
         tx.add_outputs(change)
 
         return tx, change
@@ -267,7 +283,7 @@ class CoinChooserBase(Logger):
 
     def make_tx(self, *, coins: Sequence[PartialTxInput], inputs: List[PartialTxInput],
                 outputs: List[PartialTxOutput], change_addrs: Sequence[str],
-                fee_estimator_vb: Callable, dust_threshold: int) -> PartialTransaction:
+                fee_estimator_vb: Callable, dust_threshold: int, change_data=None) -> PartialTransaction:
         """Select unspent coins to spend to pay outputs.  If the change is
         greater than dust_threshold (after adding the change output to
         the transaction) it is kept, otherwise none is sent and it is
@@ -322,7 +338,8 @@ class CoinChooserBase(Logger):
                                                             change_addrs=change_addrs,
                                                             fee_estimator_w=fee_estimator_w,
                                                             dust_threshold=dust_threshold,
-                                                            base_weight=base_weight)
+                                                            base_weight=base_weight,
+                                                            change_data=change_data)
 
         # Collect the coins into buckets
         all_buckets = self.bucketize_coins(coins, fee_estimator_vb=fee_estimator_vb)

@@ -2,13 +2,13 @@
 # sudo desktop-file-install electrum.desktop
 
 [Desktop Entry]
-Comment=Lightweight Bitcoin Client
+Comment=Lightweight Ghost Client
 Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; electrum %u"
-GenericName[en_US]=Bitcoin Wallet
+GenericName[en_US]=Ghost Wallet
 GenericName=Bitcoin Wallet
 Icon=electrum
-Name[en_US]=Electrum Bitcoin Wallet
-Name=Electrum Bitcoin Wallet
+Name[en_US]=Electrum Ghost Wallet
+Name=Electrum Ghost Wallet
 Categories=Finance;Network;
 StartupNotify=true
 StartupWMClass=electrum

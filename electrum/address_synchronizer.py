@@ -37,6 +37,8 @@ from .verifier import SPV
 from .blockchain import hash_header, Blockchain
 from .i18n import _
 from .logging import Logger
+from .bitcoin import opcodes, EncodeBase58Check
+from . import constants, segwit_addr
 from .util import EventListener, event_listener
 
 if TYPE_CHECKING:
@@ -225,6 +227,8 @@ class AddressSynchronizer(Logger, EventListener):
         conflicting_txns = set()
         with self.transaction_lock:
             for txin in tx.inputs():
+                if txin.is_anon_input():
+                    continue
                 if txin.is_coinbase_input():
                     continue
                 prevout_hash = txin.prevout.txid.hex()
@@ -267,7 +271,7 @@ class AddressSynchronizer(Logger, EventListener):
             # BUT we track is_mine inputs in a txn, and during subsequent calls
             # of add_transaction tx, we might learn of more-and-more inputs of
             # being is_mine, as we roll the gap_limit forward
-            is_coinbase = tx.inputs()[0].is_coinbase_input()
+            is_coinbase = tx.inputs()[0].is_coinbase_input() or tx.is_coinstake()
             tx_height = self.get_tx_height(tx_hash).height
             if not allow_unrelated:
                 # note that during sync, if the transactions are not properly sorted,
@@ -888,6 +892,7 @@ class AddressSynchronizer(Logger, EventListener):
             confirmed_spending_only: bool = False,
             nonlocal_only: bool = False,
             block_height: int = None,
+            inspect_scripts: bool = False,
     ) -> Sequence[PartialTxInput]:
         if block_height is not None:
             # caller wants the UTXOs we had at a given height; check other parameters
@@ -916,6 +921,14 @@ class AddressSynchronizer(Logger, EventListener):
                 if (mature_only and txo.is_coinbase_output()
                         and txo.block_height + COINBASE_MATURITY > mempool_height):
                     continue
+                if inspect_scripts:
+                    full_tx = self.get_input_tx(txo.prevout.txid.hex(), local_only_lookup=True)
+                    scriptpubkey = full_tx.outputs()[txo.prevout.out_idx].scriptpubkey
+                    if len(scriptpubkey) == 66 and scriptpubkey[0] == opcodes.OP_ISCOINSTAKE:
+                        stake_hash = scriptpubkey[5: 5 + 20]
+                        txo.stakeaddress = segwit_addr.bech32_encode(segwit_addr.Encoding.BECH32, constants.net.STAKE_ONLY_PKADDR_HRP, segwit_addr.convertbits(stake_hash, 8, 5))
+                        spend_hash = scriptpubkey[31:31 + 32]
+                        txo.spendaddress = EncodeBase58Check(bytes([constants.net.ADDRTYPE_P2PKH256]) + spend_hash)
                 coins.append(txo)
                 continue
         return coins

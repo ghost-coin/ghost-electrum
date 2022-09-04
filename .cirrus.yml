@@ -28,7 +28,7 @@ task:
         ELECTRUM_PYTHON_NAME: pypy3
   pip_cache:
     folder: ~/.cache/pip
-    fingerprint_script: echo $ELECTRUM_IMAGE && cat $ELECTRUM_REQUIREMENTS_CI && cat $ELECTRUM_REQUIREMENTS
+    fingerprint_script: echo $ELECTRUM_IMAGE && cat $ELECTRUM_REQUIREMENTS_CI && cat $ELECTRUM_REQUIREMENTS_CI && cat $ELECTRUM_REQUIREMENTS
     populate_script: mkdir -p ~/.cache/pip
   electrum_cache:
     folder: /tmp/electrum-build

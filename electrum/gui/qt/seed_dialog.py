@@ -118,7 +118,7 @@ class SeedLayout(QVBoxLayout):
         if not dialog.exec_():
             return None
         self.is_ext = cb_ext.isChecked() if 'ext' in self.options else False
-        self.seed_type = seed_type_values[clayout.selected_index()] if len(seed_types) >= 2 else 'electrum'
+        self.seed_type = seed_type_values[clayout.selected_index()] if len(seed_types) >= 2 else 'bip39'
 
     def __init__(
             self,
@@ -138,7 +138,7 @@ class SeedLayout(QVBoxLayout):
         self.parent = parent
         self.options = options
         self.config = config
-        self.seed_type = 'electrum'
+        self.seed_type = 'bip39'
         if title:
             self.addWidget(WWLabel(title))
         if seed:  # "read only", we already have the text
@@ -257,6 +257,7 @@ class SeedLayout(QVBoxLayout):
             is_checksum, is_wordlist = bip39_is_checksum_valid(s)
             status = ('checksum: ' + ('ok' if is_checksum else 'failed')) if is_wordlist else 'unknown wordlist'
             label = 'BIP39' + ' (%s)'%status
+            b = b or (is_checksum and is_wordlist)
         elif self.seed_type == 'slip39':
             self.slip39_mnemonics[self.slip39_mnemonic_index] = s
             try:

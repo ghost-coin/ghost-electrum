@@ -172,7 +172,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         assert wallet, "no wallet"
         self.wallet = wallet
         if wallet.has_lightning():
-            self.wallet.config.set_key('show_channels_tab', True)
+            #self.wallet.config.set_key('show_channels_tab', True)
+            pass
 
         Exception_Hook.maybe_setup(config=self.config, wallet=self.wallet)
 
@@ -540,8 +541,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         if self.wallet.is_watching_only():
             msg = ' '.join([
                 _("This wallet is watching-only."),
-                _("This means you will not be able to spend Bitcoins with it."),
-                _("Make sure you own the seed phrase or the private keys, before you request Bitcoins to be sent to this wallet.")
+                _("This means you will not be able to spend Ghost with it."),
+                _("Make sure you own the seed phrase or the private keys, before you request Ghost to be sent to this wallet.")
             ])
             self.show_warning(msg, title=_('Watch-only wallet'))
 
@@ -719,7 +720,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         view_menu = menubar.addMenu(_("&View"))
         add_toggle_action(view_menu, self.addresses_tab)
         add_toggle_action(view_menu, self.utxo_tab)
-        add_toggle_action(view_menu, self.channels_tab)
+        # add_toggle_action(view_menu, self.channels_tab)
         add_toggle_action(view_menu, self.contacts_tab)
         add_toggle_action(view_menu, self.console_tab)
 
@@ -761,7 +762,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         help_menu.addSeparator()
         help_menu.addAction(_("&Documentation"), lambda: webopen("http://docs.electrum.org/")).setShortcut(QKeySequence.HelpContents)
         if not constants.net.TESTNET:
-            help_menu.addAction(_("&Bitcoin Paper"), self.show_bitcoin_paper)
+            help_menu.addAction(_("&Ghost Paper"), self.show_bitcoin_paper)
         help_menu.addAction(_("&Report Bug"), self.show_report_bug)
         help_menu.addSeparator()
         help_menu.addAction(_("&Donate to server"), self.donate_to_server)
@@ -772,18 +773,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         d = self.network.get_donation_address()
         if d:
             host = self.network.get_parameters().server.host
-            self.handle_payment_identifier('bitcoin:%s?message=donation for %s' % (d, host))
+            self.handle_payment_identifier('ghost:%s?message=donation for %s' % (d, host))
         else:
             self.show_error(_('No donation address for this server'))
 
     def show_about(self):
         QMessageBox.about(self, "Electrum",
                           (_("Version")+" %s" % ELECTRUM_VERSION + "\n\n" +
-                           _("Electrum's focus is speed, with low resource usage and simplifying Bitcoin.") + " " +
+                           _("Electrum's focus is speed, with low resource usage and simplifying cryptocurrencies.") + " " +
                            _("You do not need to perform regular backups, because your wallet can be "
                               "recovered from a secret phrase that you can memorize or write on paper.") + " " +
                            _("Startup times are instant because it operates in conjunction with high-performance "
-                              "servers that handle the most complicated parts of the Bitcoin system.") + "\n\n" +
+                              "servers that handle the most complicated parts of the system.") + "\n\n" +
                            _("Uses icons from the Icons8 icon pack (icons8.com).")))
 
     def show_bitcoin_paper(self):
@@ -1111,7 +1112,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
 
     def get_contact_payto(self, key):
         _type, label = self.contacts.get(key)
-        return label + '  <' + key + '>' if _type == 'address' else key
+        if key.startswith("OP_ISCOINSTAKE"):
+            return key
+        else:
+            return label + '  <' + key + '>' if _type == 'address' else key
 
     def update_completions(self):
         l = [self.get_contact_payto(key) for key in self.contacts.keys()]
@@ -1379,7 +1383,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         self.send_tab.payto_contacts(labels)
 
     def set_contact(self, label, address):
-        if not is_address(address):
+        if not is_address(address) and not address.startswith("OP_ISCOINSTAKE"):
             self.show_error(_('Invalid Address'))
             self.contact_list.update()  # Displays original unchanged value
             return False
@@ -1940,7 +1944,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         address  = address.text().strip()
         message = message.toPlainText().strip()
         if not bitcoin.is_address(address):
-            self.show_message(_('Invalid Bitcoin address.'))
+            self.show_message(_('Invalid Ghost address.'))
             return
         if self.wallet.is_watching_only():
             self.show_message(_('This is a watching-only wallet.'))
@@ -1968,7 +1972,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, Logger, QtEventListener):
         address  = address.text().strip()
         message = message.toPlainText().strip().encode('utf-8')
         if not bitcoin.is_address(address):
-            self.show_message(_('Invalid Bitcoin address.'))
+            self.show_message(_('Invalid Ghost address.'))
             return
         try:
             # This can throw on invalid base64
