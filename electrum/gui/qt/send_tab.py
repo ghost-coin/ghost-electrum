@@ -128,12 +128,17 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         self.save_button = EnterButton(_("Save"), self.do_save_invoice)
         self.send_button = EnterButton(_("Pay") + "...", self.do_pay_or_get_invoice)
         self.clear_button = EnterButton(_("Clear"), self.do_clear)
+        self.zap_button = EnterButton(_("Zap") + "...", self.do_zap_or_get_invoice)
+        cs_changeaddress = self.wallet.get_cs_changeaddress()
+        cs_spendaddresses = self.wallet.db.get('cs_spendaddresses', None)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         buttons.addWidget(self.clear_button)
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.send_button)
+        if cs_changeaddress and cs_spendaddresses:
+            buttons.addWidget(self.zap_button)
         grid.addLayout(buttons, 6, 1, 1, 4)
 
         self.amount_e.shortcut.connect(self.spend_max)
@@ -220,11 +225,13 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
     def pay_onchain_dialog(
             self, inputs: Sequence[PartialTxInput],
             outputs: List[PartialTxOutput], *,
-            external_keypairs=None) -> None:
+            external_keypairs=None, is_zap=False) -> None:
         # trustedcoin requires this
         if run_hook('abort_send', self):
             return
         is_sweep = bool(external_keypairs)
+        if is_zap:
+            inputs = self.window.utxo_list._filter_staking_coins(inputs)
         make_tx = lambda fee_est: self.wallet.make_unsigned_transaction(
             coins=inputs,
             outputs=outputs,
@@ -235,10 +242,10 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             output_value = '!'
         else:
             output_value = sum(output_values)
-        
-        # Disable Advanced button if output is a stealth address    
+
+        # Disable Advanced button if output is a stealth address
         is_stealth = is_stealth_address(self.payto_e.data)
-        
+
         conf_dlg = ConfirmTxDialog(window=self.window, make_tx=make_tx, output_value=output_value, is_sweep=is_sweep, is_stealth=is_stealth)
         if conf_dlg.not_enough_funds:
             # Check if we had enough funds excluding fees,
@@ -306,7 +313,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         for e in [self.message_e, self.amount_e]:
             e.setText('')
             e.setFrozen(False)
-        for e in [self.send_button, self.save_button, self.clear_button, self.amount_e, self.fiat_send_e]:
+        for e in [self.send_button, self.save_button, self.clear_button, self.amount_e, self.fiat_send_e, self.zap_button]:
             e.setEnabled(True)
         self.window.update_status()
         run_hook('do_clear', self)
@@ -325,7 +332,7 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         for e in [self.payto_e, self.message_e]:
             e.setFrozen(True)
         self.lock_amount(True)
-        for btn in [self.save_button, self.send_button, self.clear_button]:
+        for btn in [self.save_button, self.send_button, self.clear_button, self.zap_button]:
             btn.setEnabled(False)
         self.payto_e.setTextNoCheck(_("please wait..."))
 
@@ -488,8 +495,8 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
         self.amount_e.textEdited.emit("")
         self.window.show_send_tab()
 
-    def read_invoice(self):
-        if self.check_send_tab_payto_line_and_show_errors():
+    def read_invoice(self, is_zap=False):
+        if self.check_send_tab_payto_line_and_show_errors() and not is_zap:
             return
         try:
             if not self._is_onchain:
@@ -509,15 +516,15 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
                         return
                 return invoice
             else:
-                outputs = self.read_outputs()
-                if self.check_send_tab_onchain_outputs_and_show_errors(outputs):
+                outputs = self.read_outputs(is_zap=is_zap)
+                if self.check_send_tab_onchain_outputs_and_show_errors(outputs) and not is_zap:
                     return
                 message = self.message_e.text()
                 if self.payto_e and self.payto_e.payto_stealth_address:
                     sxaddr = self.payto_e.payto_stealth_address
                     message = 'sx: ' + sxaddr[:8] + '...' + sxaddr[-6:] + ' ' + message
                     self.payto_e.payto_stealth_address = None
-                    
+
                 return self.wallet.create_invoice(
                     outputs=outputs,
                     message=message,
@@ -582,23 +589,44 @@ class SendTab(QWidget, MessageBoxMixin, Logger):
             return
         self.do_pay_invoice(self.pending_invoice)
 
+    def do_zap_or_get_invoice(self):
+        if not self.payto_e.data or self.payto_e.data.upper() != "ZAP":
+            self.show_error(_("Must pay to 'ZAP'"))
+            return
+        outputs = self.read_outputs(is_zap=True)
+        message = self.message_e.text()
+
+        cs_invoice = self.wallet.create_invoice(
+            outputs=outputs,
+            message=message,
+            pr=self.payment_request,
+            URI=self.payto_URI)
+
+        if self._lnurl_data:
+            self._lnurl_get_invoice()
+            return
+        self.pending_invoice = cs_invoice
+        if not self.pending_invoice:
+            return
+        self.do_pay_invoice(self.pending_invoice, is_zap=True)
+
     def pay_multiple_invoices(self, invoices):
         outputs = []
         for invoice in invoices:
             outputs += invoice.outputs
         self.pay_onchain_dialog(self.window.get_coins(), outputs)
 
-    def do_pay_invoice(self, invoice: 'Invoice'):
+    def do_pay_invoice(self, invoice: 'Invoice', is_zap=False):
         if invoice.is_lightning():
             self.pay_lightning_invoice(invoice)
         else:
-            self.pay_onchain_dialog(self.window.get_coins(), invoice.outputs)
+            self.pay_onchain_dialog(self.window.get_coins(), invoice.outputs, is_zap=is_zap)
 
-    def read_outputs(self) -> List[PartialTxOutput]:
+    def read_outputs(self, is_zap=False) -> List[PartialTxOutput]:
         if self.payment_request:
             outputs = self.payment_request.get_outputs()
         else:
-            outputs = self.payto_e.get_outputs(self.max_button.isChecked())
+            outputs = self.payto_e.get_outputs(self.max_button.isChecked(), is_zap=is_zap)
         return outputs
 
     def check_send_tab_onchain_outputs_and_show_errors(self, outputs: List[PartialTxOutput]) -> bool:

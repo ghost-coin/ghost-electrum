@@ -92,13 +92,14 @@ class UTXOList(MyTreeView):
             height = utxo.block_height
             name_short = utxo.prevout.txid.hex()[:16] + '...' + ":%d" % utxo.prevout.out_idx
             amount = self.parent.format_amount(utxo.value_sats(), whitespaces=True)
-            
+
             stakeaddress = ''
             full_tx = self.wallet.get_input_tx(utxo.prevout.txid.hex(), local_only_lookup=True)
             scriptpubkey = full_tx.outputs()[utxo.prevout.out_idx].scriptpubkey
             if len(scriptpubkey) == 66 and scriptpubkey[0] == opcodes.OP_ISCOINSTAKE:
                 stake_hash = scriptpubkey[5: 5 + 20]
                 stakeaddress = segwit_addr.bech32_encode(segwit_addr.Encoding.BECH32, constants.net.STAKE_ONLY_PKADDR_HRP, segwit_addr.convertbits(stake_hash, 8, 5))
+                self.stakeaddress = stakeaddress
                 spend_hash = scriptpubkey[31:31 + 32]
                 address = EncodeBase58Check(bytes([constants.net.ADDRTYPE_P2PKH256]) + spend_hash)
 
@@ -116,11 +117,13 @@ class UTXOList(MyTreeView):
         self.filter()
         self.update_coincontrol_bar()
 
-    def update_coincontrol_bar(self):
+    def update_coincontrol_bar(self, is_zap=False):
         # update coincontrol status bar
         if self._spend_set is not None:
             coins = [self._utxo_dict[x] for x in self._spend_set]
             coins = self._filter_frozen_coins(coins)
+            if is_zap:
+                coins = self._filter_staking_coins(coins)
             amount = sum(x.value_sats() for x in coins)
             amount_str = self.parent.format_amount_and_units(amount)
             num_outputs_str = _("{} outputs available ({} total)").format(len(coins), len(self._utxo_dict))
@@ -164,14 +167,29 @@ class UTXOList(MyTreeView):
                      not self.wallet.is_frozen_coin(utxo))]
         return coins
 
-    def set_spend_list(self, coins: Optional[List[PartialTxInput]]):
+    def _filter_staking_coins(self, coins: List[PartialTxInput]) -> List[PartialTxInput]:
+        coinList = []
+        for utxo in coins:
+            full_tx = self.wallet.get_input_tx(utxo.prevout.txid.hex(), local_only_lookup=True)
+            scriptpubkey = full_tx.outputs()[utxo.prevout.out_idx].scriptpubkey
+            if len(scriptpubkey) == 66 and scriptpubkey[0] == opcodes.OP_ISCOINSTAKE:
+                continue
+            else:
+                coinList.append(utxo)
+        return coinList
+
+
+    def set_spend_list(self, coins: Optional[List[PartialTxInput]], is_zap=False):
         if coins is not None:
             coins = self._filter_frozen_coins(coins)
+            if is_zap:
+                coins = self._filter_staking_coins(coins)
             self._spend_set = {utxo.prevout.to_str() for utxo in coins}
         else:
             self._spend_set = None
         self.refresh_all()
-        self.update_coincontrol_bar()
+        print(coins)
+        self.update_coincontrol_bar(is_zap=is_zap)
         self.selectionModel().clearSelection()
 
     def get_spend_list(self) -> Optional[Sequence[PartialTxInput]]:

@@ -27,7 +27,7 @@ from math import floor, log10
 from typing import NamedTuple, List, Callable, Sequence, Union, Dict, Tuple
 from decimal import Decimal
 
-from .bitcoin import sha256, COIN, is_address, construct_script
+from .bitcoin import sha256, COIN, is_address, construct_script, hash_encode
 from .transaction import Transaction, TxOutput, PartialTransaction, PartialTxInput, PartialTxOutput, opcodes
 from .util import NotEnoughFunds, bfh
 from .logging import Logger

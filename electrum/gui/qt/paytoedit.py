@@ -25,6 +25,7 @@
 
 import re
 import decimal
+import random
 from decimal import Decimal
 from typing import NamedTuple, Sequence, Optional, List, TYPE_CHECKING
 
@@ -34,14 +35,18 @@ from PyQt5.QtWidgets import QApplication
 from electrum import bitcoin
 from electrum.util import bfh, parse_max_spend, FailedToParsePaymentIdentifier
 from electrum.transaction import PartialTxOutput
-from electrum.bitcoin import opcodes, construct_script, is_stealth_address
+from electrum.bitcoin import opcodes, construct_script, is_stealth_address, hash160_to_p2pkh
 from electrum.logging import Logger
 from electrum.lnurl import LNURLError
+from electrum.crypto import sha256d, sha256, hash_160, ripemd
+from electrum.wallet import process_cs_spend_addrs, decode_cs_changeaddress
+from electrum.bip32 import is_xpub, BIP32Node
 
 from .qrtextedit import ScanQRTextEdit
 from .completion_text_edit import CompletionTextEdit
 from . import util
 from .util import MONOSPACE_FONT
+import electrum.constants
 
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
@@ -99,6 +104,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         self.payto_stealth_address = None  # type: Optional[str]
         self.lightning_invoice = None
         self.previous_payto = ''
+        self.data = None
 
     def setFrozen(self, b):
         self.setReadOnly(b)
@@ -128,7 +134,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
             x, y = line.split(',')
         except ValueError:
             raise Exception("expected two comma-separated values: (address, amount)") from None
-        
+
         amount = self.parse_amount(y)
         address = self.parse_address(x)
         try:
@@ -233,7 +239,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
                 pass
             else:
                 return
-                
+
             # try stealthaddress
             try:
                 address = self.parse_address(data)
@@ -244,7 +250,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
                     return
             except Exception as e:
                 pass
-            
+
             # try address/script
             try:
                 self.payto_scriptpubkey = self.parse_output(data)
@@ -302,7 +308,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
     def get_destination_scriptpubkey(self) -> Optional[bytes]:
         return self.payto_scriptpubkey
 
-    def get_outputs(self, is_max: bool) -> List[PartialTxOutput]:
+    def get_outputs(self, is_max: bool, is_zap=False) -> List[PartialTxOutput]:
         if self.payto_stealth_address:
             if is_max:
                 amount = '!'
@@ -311,7 +317,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
                 if amount is None:
                     return []
             self.outputs = [PartialTxOutput.from_address_and_value(self.payto_stealth_address, amount)]
-    
+
         if self.payto_scriptpubkey:
             if is_max:
                 amount = '!'
@@ -320,6 +326,40 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
                 if amount is None:
                     return []
             self.outputs = [PartialTxOutput(scriptpubkey=self.payto_scriptpubkey, value=amount)]
+
+        if is_zap:
+            cs_changeaddress = self.win.wallet.get_cs_changeaddress()
+            cs_spendaddresses = self.win.wallet.db.get('cs_spendaddresses', None)
+
+            if not cs_spendaddresses or not cs_changeaddress:
+                return
+
+            constant_cs_change_addrs = process_cs_spend_addrs(cs_spendaddresses)
+            stake_key_hash = decode_cs_changeaddress(cs_changeaddress)
+
+            if type(stake_key_hash) is BIP32Node:
+                db_key = 'cs_ext_stake_offset_' + cs_changeaddress
+                key_offset = self.win.wallet.db.get(db_key, 0)
+                if key_offset >= 0x80000000:
+                    raise ValueError('Stake change address key chain exhausted.')
+                path = (key_offset,)
+                subkey = stake_key_hash.subkey_at_public_derivation(path)
+                pk = subkey.eckey.get_public_key_bytes(compressed=True)
+                stake_key_hash = ripemd(sha256(pk))
+
+            change_pubkey = random.choice(constant_cs_change_addrs)
+            spend_pubkey_hash = change_pubkey
+
+            script = bfh(construct_script([
+                opcodes.OP_ISCOINSTAKE, opcodes.OP_IF, opcodes.OP_DUP, opcodes.OP_HASH160,
+                stake_key_hash,
+                opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG,
+                opcodes.OP_ELSE, opcodes.OP_DUP, opcodes.OP_SHA256,
+                spend_pubkey_hash,
+                opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF]))
+            self.payto_scriptpubkey = script
+
+            self.outputs = [PartialTxOutput(scriptpubkey=self.payto_scriptpubkey, value='!')]
 
         return self.outputs[:]
 

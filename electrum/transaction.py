@@ -650,7 +650,7 @@ def get_address_from_output_script(_bytes: bytes, *, net=None) -> Optional[str]:
     # p2sh
     if match_script_against_template(decoded, SCRIPTPUBKEY_TEMPLATE_P2SH):
         return hash160_to_p2sh(decoded[1][1], net=net)
-        
+
     # p2pkh coldstake
     if match_script_against_template(decoded, SCRIPTPUBKEY_TEMPLATE_P2PKH_CS):
         return hash160_to_p2pkh(ripemd(decoded[10][1]), net=net)
@@ -679,7 +679,7 @@ def parse_input(vds: BCDataStream) -> TxInput:
     prevout = TxOutpoint(txid=prevout_hash, out_idx=prevout_n)
     script_sig = vds.read_bytes(vds.read_compact_size())
     nsequence = vds.read_uint32()
-    
+
     script_data = None
     if prevout_n == 0xffffffa0:
         n = vds.read_compact_size()
@@ -792,7 +792,7 @@ class Transaction:
             'outputs': [txout.to_json() for txout in self.outputs()],
         }
         return d
-        
+
     def is_coinstake(self) -> bool:
         self.deserialize()
         return (self._version & 0xFF) == GHOST_TXN_VERSION and ((self._version >> 8) & 0xFF) == GHOST_TXN_COINSTAKE;
@@ -1437,7 +1437,7 @@ class PartialTxInput(TxInput, PSBTSection):
                             for pubkey, (xfp, path) in self.bip32_paths.items()},
             'unknown_psbt_fields': {key.hex(): val.hex() for key, val in self._unknown.items()},
         })
-        
+
         try:
             d['stake_address'] = self.stakeaddress
         except Exception:
@@ -2085,7 +2085,7 @@ class PartialTransaction(Transaction):
                 else:
                     i += 1
             self._outputs.sort(key = lambda o: (o.value, o.scriptpubkey))
-            
+
             i = 0
             while i < len(self._outputs):
                 txo = self._outputs[i]
