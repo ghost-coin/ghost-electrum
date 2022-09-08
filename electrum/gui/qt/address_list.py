@@ -32,7 +32,7 @@ from PyQt5.QtWidgets import QAbstractItemView, QComboBox, QLabel, QMenu
 from electrum.i18n import _
 from electrum.util import block_explorer_URL, profiler
 from electrum.plugin import run_hook
-from electrum.bitcoin import is_address
+from electrum.bitcoin import is_address, is_b58_address_256
 from electrum.wallet import InternalAddressCorruption
 
 from .util import MyTreeView, MONOSPACE_FONT, ColorScheme, webopen, MySortModel
@@ -237,7 +237,7 @@ class AddressList(MyTreeView):
         address_item[self.Columns.NUM_TXS].setText("%d"%num)
         c = ColorScheme.BLUE.as_color(True) if self.wallet.is_frozen_address(address) else self._default_bg_brush
         address_item[self.Columns.ADDRESS].setBackground(c)
-        if address in self.addresses_beyond_gap_limit:
+        if address in self.addresses_beyond_gap_limit and not is_b58_address_256(address):
             address_item[self.Columns.ADDRESS].setBackground(ColorScheme.RED.as_color(True))
 
     def create_menu(self, position):

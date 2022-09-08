@@ -333,7 +333,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
         # Pad r and s points with 0x00 bytes when the point is small to get valid signature.
         r_padded = bytes([0x00]) * (32 - len(r)) + r
         s_padded = bytes([0x00]) * (32 - len(s)) + s
-        
+
         return bytes([27 + 4 + (signature[0] & 0x01)]) + r_padded + s_padded
 
     @runs_in_hwd_thread
@@ -378,7 +378,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
             if not full_path:
                 self.give_error("No matching pubkey for sign_transaction")  # should never happen
             full_path = convert_bip32_intpath_to_strpath(full_path)[2:]
-            
+
             redeemScript = Transaction.get_preimage_script(txin)
             txin_prev_tx = txin.utxo
             if txin_prev_tx is None and not txin.is_segwit():
@@ -453,8 +453,10 @@ class Ledger_KeyStore(Hardware_KeyStore):
                     chipInputs.append({'value' : tmp, 'witness' : True, 'sequence' : sequence})
                     redeemScripts.append(bfh(utxo[2]))
                 elif (not p2shTransaction) or client_electrum.supports_multi_output():
-                    print(utxo)
+                    #print(utxo)
+                    #print(bfh(utxo[0]))
                     txtmp = bitcoinTransaction(bfh(utxo[0]))
+                    #print(txtmp.__str__())
                     trustedInput = client_ledger.getTrustedInput(txtmp, utxo[1])
                     trustedInput['sequence'] = sequence
                     if segwitTransaction:

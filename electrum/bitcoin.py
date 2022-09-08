@@ -396,10 +396,18 @@ def b58_address_to_hash160(addr: str) -> Tuple[int, bytes]:
     return _bytes[0], _bytes[1:21]
 
 
+def b58_address_to_hash256(addr: str) -> Tuple[int, bytes]:
+    addr = to_bytes(addr, 'ascii')
+    _bytes = DecodeBase58Check(addr)
+    if len(_bytes) != 33:
+        raise Exception(f'expected 33 payload bytes in base58 address. got: {len(_bytes)}')
+    return _bytes[0], _bytes[1:33]
+
+
 def hash160_to_p2pkh(h160: bytes, *, net=None) -> str:
     if net is None: net = constants.net
     return hash160_to_b58_address(h160, net.ADDRTYPE_P2PKH)
-    
+
 
 def hash256_to_p2pkh(h256: bytes, *, net=None) -> str:
     if net is None: net = constants.net
@@ -413,6 +421,10 @@ def hash160_to_p2sh(h160: bytes, *, net=None) -> str:
 def public_key_to_p2pkh(public_key: bytes, *, net=None) -> str:
     if net is None: net = constants.net
     return hash160_to_p2pkh(hash_160(public_key), net=net)
+
+def public_key_to_p2pkh_256(public_key: bytes, *, net=None) -> str:
+    if net is None: net = constants.net
+    return hash256_to_p2pkh(sha256(public_key), net=net)
 
 def hash_to_segwit_addr(h: bytes, witver: int, *, net=None) -> str:
     if net is None: net = constants.net
@@ -440,6 +452,8 @@ def pubkey_to_address(txin_type: str, pubkey: str, *, net=None) -> str:
     if net is None: net = constants.net
     if txin_type == 'p2pkh':
         return public_key_to_p2pkh(bfh(pubkey), net=net)
+    elif txin_type == 'p2pkh_256':
+        return public_key_to_p2pkh_256(bfh(pubkey), net=net)
     elif txin_type == 'p2wpkh':
         return public_key_to_p2wpkh(bfh(pubkey), net=net)
     elif txin_type == 'p2wpkh-p2sh':
@@ -480,9 +494,14 @@ def address_to_script(addr: str, *, net=None) -> str:
         if not (0 <= witver <= 16):
             raise BitcoinException(f'impossible witness version: {witver}')
         return construct_script([witver, bytes(witprog)])
-    addrtype, hash_160_ = b58_address_to_hash160(addr)
+    if is_b58_address_256(addr):
+        addrtype, hash_256_ = b58_address_to_hash256(addr)
+    else:
+        addrtype, hash_160_ = b58_address_to_hash160(addr)
     if addrtype == net.ADDRTYPE_P2PKH:
         script = pubkeyhash_to_p2pkh_script(bh2u(hash_160_))
+    elif addrtype == net.ADDRTYPE_P2PKH256:
+        script = pubkeyhash_to_p2pkh_256_script(bh2u(hash_256_))
     elif addrtype == net.ADDRTYPE_P2SH:
         script = construct_script([opcodes.OP_HASH160, hash_160_, opcodes.OP_EQUAL])
     else:
@@ -551,6 +570,14 @@ def pubkeyhash_to_p2pkh_script(pubkey_hash160: str) -> str:
         opcodes.OP_CHECKSIG
     ])
 
+def pubkeyhash_to_p2pkh_256_script(pubkey_hash256: str) -> str:
+    return construct_script([
+        opcodes.OP_DUP,
+        opcodes.OP_HASH256,
+        pubkey_hash256,
+        opcodes.OP_EQUALVERIFY,
+        opcodes.OP_CHECKSIG
+    ])
 
 __b58chars = b'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 assert len(__b58chars) == 58
@@ -762,6 +789,18 @@ def is_b58_address(addr: str, *, net=None) -> bool:
     return True
 
 
+def is_b58_address_256(addr: str, *, net=None) -> bool:
+    if net is None: net = constants.net
+    try:
+        # test length, checksum, encoding:
+        addrtype, h = b58_address_to_hash256(addr)
+    except Exception as e:
+        return False
+    if addrtype not in [net.ADDRTYPE_P2PKH256]:
+        return False
+    return True
+
+
 def is_stealth_address(addr: str, *, net=None) -> bool:
     if net is None: net = constants.net
     try:
@@ -803,7 +842,8 @@ def is_address(addr: str, *, net=None) -> bool:
     if net is None: net = constants.net
     return is_segwit_address(addr, net=net) \
            or is_b58_address(addr, net=net) \
-           or is_stealth_address(addr, net=net)
+           or is_stealth_address(addr, net=net) \
+           or is_b58_address_256(addr, net=net)
 
 
 def is_private_key(key: str, *, raise_on_error=False) -> bool:

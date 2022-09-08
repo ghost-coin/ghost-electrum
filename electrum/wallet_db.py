@@ -1351,7 +1351,7 @@ class WalletDB(JsonDB):
     @locked
     def get_receiving_addresses(self, *, slice_start=None, slice_stop=None) -> List[str]:
         # note: slicing makes a shallow copy
-        return self.receiving_addresses[slice_start:slice_stop]
+        return self.receiving_addresses[slice_start:slice_stop] + self.receiving_addresses_256[slice_start:slice_stop]
 
     @modifier
     def add_change_address(self, addr: str) -> None:
@@ -1364,6 +1364,12 @@ class WalletDB(JsonDB):
         assert isinstance(addr, str)
         self._addr_to_addr_index[addr] = (0, len(self.receiving_addresses))
         self.receiving_addresses.append(addr)
+
+    @modifier
+    def add_receiving_address_256(self, addr: str) -> None:
+        assert isinstance(addr, str)
+        self._addr_to_addr_index[addr] = (0, len(self.receiving_addresses_256))
+        self.receiving_addresses_256.append(addr)
 
     @locked
     def get_address_index(self, address: str) -> Optional[Sequence[int]]:
@@ -1400,16 +1406,19 @@ class WalletDB(JsonDB):
             self.imported_addresses = self.get_dict('addresses')  # type: Dict[str, dict]
         else:
             self.get_dict('addresses')
-            for name in ['receiving', 'change']:
+            for name in ['receiving', 'change', 'receiving_256']:
                 if name not in self.data['addresses']:
                     self.data['addresses'][name] = []
             self.change_addresses = self.data['addresses']['change']
             self.receiving_addresses = self.data['addresses']['receiving']
+            self.receiving_addresses_256 = self.data['addresses']['receiving_256']
             self._addr_to_addr_index = {}  # type: Dict[str, Sequence[int]]  # key: address, value: (is_change, index)
             for i, addr in enumerate(self.receiving_addresses):
                 self._addr_to_addr_index[addr] = (0, i)
             for i, addr in enumerate(self.change_addresses):
                 self._addr_to_addr_index[addr] = (1, i)
+            for i, addr in enumerate(self.receiving_addresses_256):
+                self._addr_to_addr_index[addr] = (0, i)
 
     @profiler
     def _load_transactions(self):

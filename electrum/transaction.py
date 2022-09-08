@@ -653,11 +653,11 @@ def get_address_from_output_script(_bytes: bytes, *, net=None) -> Optional[str]:
 
     # p2pkh coldstake
     if match_script_against_template(decoded, SCRIPTPUBKEY_TEMPLATE_P2PKH_CS):
-        return hash160_to_p2pkh(ripemd(decoded[10][1]), net=net)
+        return hash256_to_p2pkh(decoded[10][1], net=net)
 
     # p2pkh 256
     if match_script_against_template(decoded, SCRIPTPUBKEY_TEMPLATE_P2PKH_256):
-        return hash160_to_p2pkh(ripemd(decoded[2][1]), net=net)
+        return hash256_to_p2pkh(decoded[2][1], net=net)
 
     # segwit address (version 0)
     if match_script_against_template(decoded, SCRIPTPUBKEY_TEMPLATE_WITNESS_V0):

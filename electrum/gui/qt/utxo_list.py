@@ -188,7 +188,6 @@ class UTXOList(MyTreeView):
         else:
             self._spend_set = None
         self.refresh_all()
-        print(coins)
         self.update_coincontrol_bar(is_zap=is_zap)
         self.selectionModel().clearSelection()
 

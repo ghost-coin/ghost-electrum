@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import QApplication
 from electrum import bitcoin
 from electrum.util import bfh, parse_max_spend, FailedToParsePaymentIdentifier
 from electrum.transaction import PartialTxOutput
-from electrum.bitcoin import opcodes, construct_script, is_stealth_address, hash160_to_p2pkh
+from electrum.bitcoin import opcodes, construct_script, is_stealth_address, hash160_to_p2pkh, is_b58_address_256
 from electrum.logging import Logger
 from electrum.lnurl import LNURLError
 from electrum.crypto import sha256d, sha256, hash_160, ripemd
@@ -185,7 +185,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         r = line.strip()
         m = re.match('^'+RE_ALIAS+'$', r)
         address = str(m.group(2) if m else r)
-        assert bitcoin.is_address(address)
+        assert bitcoin.is_address(address) and not is_b58_address_256(address)
         return address
 
     def _on_input_btn(self, text: str):
