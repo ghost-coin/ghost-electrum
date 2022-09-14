@@ -573,7 +573,7 @@ def pubkeyhash_to_p2pkh_script(pubkey_hash160: str) -> str:
 def pubkeyhash_to_p2pkh_256_script(pubkey_hash256: str) -> str:
     return construct_script([
         opcodes.OP_DUP,
-        opcodes.OP_HASH256,
+        opcodes.OP_SHA256,
         pubkey_hash256,
         opcodes.OP_EQUALVERIFY,
         opcodes.OP_CHECKSIG

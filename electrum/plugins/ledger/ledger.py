@@ -456,7 +456,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
                     #print(utxo)
                     #print(bfh(utxo[0]))
                     txtmp = bitcoinTransaction(bfh(utxo[0]))
-                    #print(txtmp.__str__())
+                    print(str(txtmp))
                     trustedInput = client_ledger.getTrustedInput(txtmp, utxo[1])
                     trustedInput['sequence'] = sequence
                     if segwitTransaction:

@@ -185,7 +185,7 @@ class PayToEdit(CompletionTextEdit, ScanQRTextEdit, Logger):
         r = line.strip()
         m = re.match('^'+RE_ALIAS+'$', r)
         address = str(m.group(2) if m else r)
-        assert bitcoin.is_address(address) and not is_b58_address_256(address)
+        assert bitcoin.is_address(address)
         return address
 
     def _on_input_btn(self, text: str):
