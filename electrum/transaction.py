@@ -52,7 +52,7 @@ from .bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
 from .crypto import sha256d, ripemd, sha256
 from .logging import get_logger
 
-from .bitcoin import is_stealth_address, decode_stealth_address
+from .bitcoin import is_stealth_address, decode_stealth_address, is_b58_address_256, b58_address_to_hash256
 from .ecc import ECPrivkey, ECPubkey, string_to_number
 
 if TYPE_CHECKING:
@@ -563,6 +563,10 @@ SCRIPTPUBKEY_TEMPLATE_ANYSEGWIT = [OP_ANYSEGWIT_VERSION, OPPushDataGeneric(lambd
 def check_scriptpubkey_template_and_dust(scriptpubkey, amount: Optional[int]):
     if match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2PKH):
         dust_limit = bitcoin.DUST_LIMIT_P2PKH
+    elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2PKH_256):
+        dust_limit = bitcoin.DUST_LIMIT_P2PKH
+    elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2PKH_CS):
+        dust_limit = bitcoin.DUST_LIMIT_P2PKH
     elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2SH):
         dust_limit = bitcoin.DUST_LIMIT_P2SH
     elif match_script_against_template(scriptpubkey, SCRIPTPUBKEY_TEMPLATE_P2WSH):
@@ -910,9 +914,14 @@ class Transaction:
         witver, witprog = segwit_addr.decode_segwit_address(constants.net.SEGWIT_HRP, addr)
         if witprog is not None:
             return 'p2wpkh'
-        addrtype, hash_160_ = b58_address_to_hash160(addr)
+        if is_b58_address_256(addr):
+            addrtype, hash_160_ = b58_address_to_hash256(addr)
+        else:
+            addrtype, hash_160_ = b58_address_to_hash160(addr)
         if addrtype == constants.net.ADDRTYPE_P2PKH:
             return 'p2pkh'
+        elif addrtype == constants.net.ADDRTYPE_P2PKH256:
+            return 'p2pkh_256'
         elif addrtype == constants.net.ADDRTYPE_P2SH:
             return 'p2wpkh-p2sh'
         raise Exception(f'unrecognized address: {repr(addr)}')
@@ -941,7 +950,7 @@ class Transaction:
             # put op_0 before script
             redeem_script = multisig_script(pubkeys, txin.num_sig)
             return construct_script([0, *sig_list, redeem_script])
-        elif _type == 'p2pkh':
+        elif _type in ['p2pkh', 'p2pkh_256', 'p2pkh_cs']:
             return construct_script([sig_list[0], pubkeys[0]])
         elif _type in ['p2wpkh', 'p2wsh']:
             return ''
@@ -978,7 +987,11 @@ class Transaction:
         elif txin.script_type == 'p2pk':
             pubkey = pubkeys[0]
             return bitcoin.public_key_to_p2pk_script(pubkey)
-        elif txin.script_type in ['p2pkh_256', 'p2pkh_cs']:
+        elif txin.script_type in ['p2pkh_256']:
+            pubkey = pubkeys[0]
+            pkh = bh2u(sha256(bfh(pubkey)))
+            return bitcoin.pubkeyhash_to_p2pkh_256_script(pkh)
+        elif txin.script_type in ['p2pkh_cs']:
             return txin.utxo.outputs()[txin.prevout.out_idx].scriptpubkey.hex()
         else:
             raise UnknownTxinType(f'cannot construct preimage_script for txin_type: {txin.script_type}')
@@ -1469,12 +1482,12 @@ class PartialTxInput(TxInput, PSBTSection):
             if self.witness_utxo:
                 # Particl set 256bit or coldstake script from prevout script, witness_utxo was constructed from address
                 utxo = self.utxo.outputs()[self.prevout.out_idx]
-                if utxo != self.witness_utxo:
-                    script_type = get_script_type_from_output_script(utxo.scriptpubkey)
-                    if script_type in ('p2pkh_256', 'p2pkh_cs'):
-                        self.witness_utxo.scriptpubkey = utxo.scriptpubkey
-                        self.witness_utxo.script_type = script_type
-                        self.script_type = script_type
+                #if utxo == self.witness_utxo:
+                script_type = get_script_type_from_output_script(utxo.scriptpubkey)
+                if script_type in ('p2pkh_256', 'p2pkh_cs'):
+                    self.witness_utxo.scriptpubkey = utxo.scriptpubkey
+                    self.witness_utxo.script_type = script_type
+                    self.script_type = script_type
                 if self.utxo.outputs()[self.prevout.out_idx] != self.witness_utxo:
                     raise PSBTInputConsistencyFailure(f"PSBT input validation: "
                                                       f"If both non-witness UTXO and witness UTXO are provided, they must be consistent")
@@ -1629,7 +1642,7 @@ class PartialTxInput(TxInput, PSBTSection):
                 inner_type = get_script_type_from_output_script(self.witness_script)
             if inner_type is not None:
                 type = inner_type + '-' + type
-            if type in ('p2pkh', 'p2wpkh-p2sh', 'p2wpkh'):
+            if type in ('p2pkh', 'p2wpkh-p2sh', 'p2wpkh', 'p2pkh_256'):
                 self.script_type = type
         return
 

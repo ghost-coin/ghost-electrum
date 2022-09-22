@@ -3308,7 +3308,7 @@ class Imported_Wallet(Simple_Wallet):
             return
         if txin.script_type in ('unknown', 'address'):
             return
-        elif txin.script_type in ('p2pkh', 'p2wpkh', 'p2wpkh-p2sh'):
+        elif txin.script_type in ('p2pkh', 'p2wpkh', 'p2wpkh-p2sh', 'p2pkh_256', 'p2pkh_cs'):
             pubkey = self.get_public_key(address)
             if not pubkey:
                 return
@@ -3478,7 +3478,7 @@ class Deterministic_Wallet(Abstract_Wallet):
                 self._not_old_change_addresses.append(address)
             elif not for_change:
                 self.db.add_receiving_address_256(address_256)
-                #self.adb.add_address(address_256)
+                self.adb.add_address(address_256)
             return address
 
     def synchronize_sequence(self, for_change: bool) -> int:
