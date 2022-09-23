@@ -84,7 +84,7 @@ class GhostMainnet(AbstractNet):
     BOLT11_HRP = SEGWIT_HRP
     GENESIS = "00001e92daa9a7c945afdf3ce2736862b128f95c8966d3cda112caea98dd95f0"
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
-    DEFAULT_SERVERS = [] # read_json('servers.json', {})
+    DEFAULT_SERVERS = read_json('servers.json', {})
     CHECKPOINTS = read_json('checkpoints.json', [])
     BLOCK_HEIGHT_FIRST_LIGHTNING_CHANNELS = 1497000
 

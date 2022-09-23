@@ -1482,7 +1482,7 @@ class PartialTxInput(TxInput, PSBTSection):
             if self.witness_utxo:
                 # Particl set 256bit or coldstake script from prevout script, witness_utxo was constructed from address
                 utxo = self.utxo.outputs()[self.prevout.out_idx]
-                #if utxo == self.witness_utxo:
+
                 script_type = get_script_type_from_output_script(utxo.scriptpubkey)
                 if script_type in ('p2pkh_256', 'p2pkh_cs'):
                     self.witness_utxo.scriptpubkey = utxo.scriptpubkey
