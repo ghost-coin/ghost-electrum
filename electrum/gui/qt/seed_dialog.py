@@ -118,7 +118,7 @@ class SeedLayout(QVBoxLayout):
         if not dialog.exec_():
             return None
         self.is_ext = cb_ext.isChecked() if 'ext' in self.options else False
-        self.seed_type = seed_type_values[clayout.selected_index()] if len(seed_types) >= 2 else 'bip39'
+        self.seed_type = seed_type_values[clayout.selected_index()] if len(seed_types) >= 2 else 'electrum'
 
     def __init__(
             self,
@@ -138,7 +138,7 @@ class SeedLayout(QVBoxLayout):
         self.parent = parent
         self.options = options
         self.config = config
-        self.seed_type = 'bip39'
+        self.seed_type = 'electrum'
         if title:
             self.addWidget(WWLabel(title))
         if seed:  # "read only", we already have the text
