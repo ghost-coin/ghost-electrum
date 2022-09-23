@@ -115,9 +115,9 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.receive_lightning_help_text = WWLabel('')
         self.receive_rebalance_button = QPushButton('Rebalance')
         self.receive_rebalance_button.suggestion = None
-        
+
         self.receive_address_256_e = ButtonsTextEdit()
-        
+
         def on_receive_rebalance():
             if self.receive_rebalance_button.suggestion:
                 chan1, chan2, delta = self.receive_rebalance_button.suggestion
@@ -166,7 +166,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
         self.receive_tabs.addTab(self.receive_URI_widget, read_QIcon("link.png"), _('URI'))
         self.receive_tabs.addTab(self.receive_address_widget, read_QIcon("bitcoin.png"), _('Address'))
         self.receive_tabs.addTab(self.receive_address_256_e, read_QIcon("bitcoin.png"), _('256bit Address'))
-        self.receive_tabs.addTab(self.receive_lightning_widget, read_QIcon("lightning.png"), _('Lightning'))
+        #self.receive_tabs.addTab(self.receive_lightning_widget, read_QIcon("lightning.png"), _('Lightning'))
         self.receive_tabs.currentChanged.connect(self.update_receive_qr_window)
         self.receive_tabs.setCurrentIndex(self.config.get('receive_tabs_index', 0))
         self.receive_tabs.currentChanged.connect(lambda i: self.config.set_key('receive_tabs_index', i))
@@ -355,7 +355,7 @@ class ReceiveTab(QWidget, MessageBoxMixin, Logger):
                     return
                 addr = self.wallet.create_new_address(False)
         return addr
-        
+
     def update_receive_address_256_styling(self):
         addr = str(self.receive_address_e.text())
         self.receive_address_256_e.setStyleSheet("")
