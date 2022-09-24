@@ -67,7 +67,7 @@ Builder.load_string('''
             orientation: 'horizontal'
             size_hint: 1, 0.5
             Label:
-                text: _('Target') + ' (%s):' % (_('mempool') if root.method == 2 else _('ETA') if root.method == 1 else _('static'))
+                text: _('Target') + ' (%s):' % (_('ETA'))
             Button:
                 id: fee_button
                 text: ''

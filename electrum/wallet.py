@@ -60,7 +60,7 @@ from .util import (NotEnoughFunds, UserCancelled, profiler, OldTaskGroup, ignore
                    Fiat, bfh, bh2u, TxMinedInfo, quantize_feerate, create_bip21_uri, OrderedDictWithIndex, parse_max_spend)
 from .simple_config import SimpleConfig, FEE_RATIO_HIGH_WARNING, FEERATE_WARNING_HIGH_FEE
 from .bitcoin import COIN, TYPE_ADDRESS
-from .bitcoin import is_address, address_to_script, is_minikey, relayfee, dust_threshold, public_key_to_p2pkh_256
+from .bitcoin import is_address, address_to_script, is_minikey, relayfee, dust_threshold, public_key_to_p2pkh_256, opcodes
 from .bitcoin import b58_address_to_hash160, DecodeBase58Check, hash160_to_p2pkh, EncodeBase58Check, is_b58_address_256
 from .crypto import sha256d, ripemd
 from . import keystore
@@ -873,6 +873,7 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             domain: Optional[Iterable[str]] = None,
             *,
             nonlocal_only: bool = False,
+            is_zap: bool = False,
     ) -> Sequence[PartialTxInput]:
         confirmed_only = self.config.get('confirmed_only', False)
         with self._freeze_lock:
@@ -885,7 +886,20 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             nonlocal_only=nonlocal_only,
         )
         utxos = [utxo for utxo in utxos if not self.is_frozen_coin(utxo)]
+        if is_zap:
+            utxos = self._filter_staking_coins(utxos)
         return utxos
+
+    def _filter_staking_coins(self, coins: List[PartialTxInput]) -> List[PartialTxInput]:
+        coinList = []
+        for utxo in coins:
+            full_tx = self.get_input_tx(utxo.prevout.txid.hex(), local_only_lookup=True)
+            scriptpubkey = full_tx.outputs()[utxo.prevout.out_idx].scriptpubkey
+            if len(scriptpubkey) == 66 and scriptpubkey[0] == opcodes.OP_ISCOINSTAKE:
+                continue
+            else:
+                coinList.append(utxo)
+        return coinList
 
     @abstractmethod
     def get_receiving_addresses(self, *, slice_start=None, slice_stop=None) -> Sequence[str]:

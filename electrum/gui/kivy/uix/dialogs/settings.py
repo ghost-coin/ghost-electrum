@@ -88,26 +88,24 @@ Builder.load_string('''
                     title: _('Password')
                     description: _('Change your password') if app._use_single_password else _("Change your password for this wallet.")
                     action: root.change_password
-                CardSeparator
-                SettingsItem:
-                    disabled: not root.enable_toggle_use_recoverable_channels
-                    status: _('Yes') if (app.use_recoverable_channels and not self.disabled) else _('No')
-                    title: _('Create recoverable channels') + ': ' + self.status
-                    description: _("Add channel recovery data to funding transaction.")
-                    message: _(messages.MSG_RECOVERABLE_CHANNELS)
-                    action: partial(root.boolean_dialog, 'use_recoverable_channels', _('Create recoverable channels'), self.message)
-                CardSeparator
-                SettingsItem:
-                    status: _('Trampoline') if not app.use_gossip else _('Gossip')
-                    title: _('Lightning Routing') + ': ' + self.status
-                    description: _("Use trampoline routing or gossip.")
-                    action: partial(root.routing_dialog, self)
-                    
-                    
+                # CardSeparator
+                # SettingsItem:
+                #     disabled: not root.enable_toggle_use_recoverable_channels
+                #     status: _('Yes') if (app.use_recoverable_channels and not self.disabled) else _('No')
+                #     title: _('Create recoverable channels') + ': ' + self.status
+                #     description: _("Add channel recovery data to funding transaction.")
+                #     message: _(messages.MSG_RECOVERABLE_CHANNELS)
+                #     action: partial(root.boolean_dialog, 'use_recoverable_channels', _('Create recoverable channels'), self.message)
+                # CardSeparator
+                # SettingsItem:
+                #     status: _('Trampoline') if not app.use_gossip else _('Gossip')
+                #     title: _('Lightning Routing') + ': ' + self.status
+                #     description: _("Use trampoline routing or gossip.")
+                #     action: partial(root.routing_dialog, self)
                 CardSeparator
                 SettingsItem:
                     cs_changeaddress: root.get_cs_changeaddress()
-                    title: _('Coldstaking') + ': ' + self.cs_changeaddress
+                    title: _('Coldstaking') + ': ' + self.cs_changeaddress[:12] + '...' + self.cs_changeaddress[-12:]
                     description: _("Configure Coldstaking.")
                     action: partial(root.cs_dialog, self)
 
@@ -268,8 +266,8 @@ class SettingsDialog(Factory.Popup):
                 label.status = self.fx_status()
             self._fx_dialog = FxDialog(self.app, self.plugins, self.config, cb)
         self._fx_dialog.open()
-        
-        
+
+
     def get_cs_changeaddress(self):
         cs_changeaddress = self.app.wallet.get_cs_changeaddress(default='')
         return 'Disabled' if cs_changeaddress == '' else cs_changeaddress

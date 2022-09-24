@@ -154,6 +154,14 @@
                 text: _('Pay') if not root.is_lnurl else _('Get Invoice')
                 size_hint: 1, 1
                 on_release: s.do_pay()
+        BoxLayout:
+            size_hint: 1, None
+            height: '48dp'
+            Button:
+                text: _('Zap') if not root.is_lnurl else _('Get Invoice')
+                size_hint: 1, 1
+                on_release: s.do_pay(is_zap=True)
+
         Widget:
             size_hint: 1, 0.1
         PaymentRecycleView:

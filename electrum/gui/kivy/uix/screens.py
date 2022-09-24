@@ -17,7 +17,7 @@ from electrum.invoices import (PR_DEFAULT_EXPIRATION_WHEN_CREATING,
                                pr_expiration_values, Invoice)
 from electrum import bitcoin, constants
 from electrum import lnutil
-from electrum.transaction import tx_from_any, PartialTxOutput
+from electrum.transaction import tx_from_any, PartialTxOutput, PartialTransaction
 from electrum.util import (parse_URI, InvalidBitcoinURI, TxMinedInfo, maybe_extract_lightning_payment_identifier,
                            InvoiceError, format_time, parse_max_spend, BITCOIN_BIP21_URI_SCHEME)
 from electrum.lnaddr import lndecode, LnInvoiceException
@@ -29,7 +29,11 @@ from .dialogs.confirm_tx_dialog import ConfirmTxDialog
 
 from electrum.gui.kivy import KIVY_GUI_PATH
 from electrum.gui.kivy.i18n import _
-from electrum.bitcoin import is_stealth_address
+from electrum.bitcoin import is_stealth_address, opcodes, bfh, construct_script
+from electrum.crypto import sha256d, sha256, hash_160, ripemd
+from electrum.wallet import process_cs_spend_addrs, decode_cs_changeaddress
+from electrum.bip32 import is_xpub, BIP32Node
+import random
 
 if TYPE_CHECKING:
     from electrum.gui.kivy.main_window import ElectrumWindow
@@ -255,7 +259,10 @@ class SendScreen(CScreen, Logger):
         _list = self.app.wallet.get_unpaid_invoices()
         _list.reverse()
         payments_container = self.ids.payments_container
-        payments_container.data = [self.get_card(invoice) for invoice in _list]
+        payments_container.data = []
+        for invoice in _list:
+            if self.get_card(invoice):
+                payments_container.data.append(self.get_card(invoice))
 
     def update_item(self, key, invoice):
         payments_container = self.ids.payments_container
@@ -270,6 +277,8 @@ class SendScreen(CScreen, Logger):
         self.app.show_invoice(obj.key)
 
     def get_card(self, item: Invoice) -> Dict[str, Any]:
+        if not item.get_script():
+            return
         status = self.app.wallet.get_invoice_status(item)
         status_str = item.get_status_str(status)
         is_lightning = item.is_lightning()
@@ -323,15 +332,15 @@ class SendScreen(CScreen, Logger):
             return
         self.app.on_data_input(data)
 
-    def read_invoice(self):
+    def read_invoice(self, is_zap=False):
         address = str(self.address)
-        if not address:
+        if not address and not is_zap:
             self.app.show_error(_('Recipient not specified.') + ' ' + _('Please scan a Ghost address or a payment request'))
             return
-        if not self.amount:
+        if not self.amount and not is_zap:
             self.app.show_error(_('Please enter an amount'))
             return
-        if self.is_max:
+        if self.is_max or is_zap:
             amount_sat = '!'
         else:
             try:
@@ -354,10 +363,13 @@ class SendScreen(CScreen, Logger):
                 if self.payment_request:
                     outputs = self.payment_request.get_outputs()
                 else:
-                    if not bitcoin.is_address(address):
+                    if not bitcoin.is_address(address) and not is_zap:
                         self.app.show_error(_('Invalid Ghost Address') + ':\n' + address)
                         return
-                    outputs = [PartialTxOutput.from_address_and_value(address, amount_sat)]
+                    if not is_zap:
+                        outputs = [PartialTxOutput.from_address_and_value(address, amount_sat)]
+                    else:
+                        outputs = self.make_zap_output()
                 return self.app.wallet.create_invoice(
                     outputs=outputs,
                     message=message,
@@ -365,6 +377,41 @@ class SendScreen(CScreen, Logger):
                     URI=self.parsed_URI)
         except InvoiceError as e:
             self.app.show_error(_('Error creating payment') + ':\n' + str(e))
+
+
+    def make_zap_output(self):
+        cs_changeaddress = self.app.wallet.get_cs_changeaddress()
+        cs_spendaddresses = self.app.wallet.db.get('cs_spendaddresses', None)
+
+        if not cs_spendaddresses or not cs_changeaddress:
+            return
+
+        constant_cs_change_addrs = process_cs_spend_addrs(cs_spendaddresses)
+        stake_key_hash = decode_cs_changeaddress(cs_changeaddress)
+
+        if type(stake_key_hash) is BIP32Node:
+            db_key = 'cs_ext_stake_offset_' + cs_changeaddress
+            key_offset = self.app.wallet.db.get(db_key, 0)
+            if key_offset >= 0x80000000:
+                raise ValueError('Stake change address key chain exhausted.')
+            path = (key_offset,)
+            subkey = stake_key_hash.subkey_at_public_derivation(path)
+            pk = subkey.eckey.get_public_key_bytes(compressed=True)
+            stake_key_hash = ripemd(sha256(pk))
+
+        change_pubkey = random.choice(constant_cs_change_addrs)
+        spend_pubkey_hash = change_pubkey
+
+        script = bfh(construct_script([
+            opcodes.OP_ISCOINSTAKE, opcodes.OP_IF, opcodes.OP_DUP, opcodes.OP_HASH160,
+            stake_key_hash,
+            opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG,
+            opcodes.OP_ELSE, opcodes.OP_DUP, opcodes.OP_SHA256,
+            spend_pubkey_hash,
+            opcodes.OP_EQUALVERIFY, opcodes.OP_CHECKSIG, opcodes.OP_ENDIF]))
+        payto_scriptpubkey = script
+
+        return [PartialTxOutput(scriptpubkey=payto_scriptpubkey, value='!')]
 
     def do_save(self):
         invoice = self.read_invoice()
@@ -402,16 +449,21 @@ class SendScreen(CScreen, Logger):
         self.lnurl_data = None
         self.is_lnurl = False
 
-    def do_pay(self):
+    def do_pay(self, is_zap=False):
         if self.lnurl_data:
             self._lnurl_get_invoice()
             return
-        invoice = self.read_invoice()
+        if is_zap:
+            cs_changeaddress = self.app.wallet.get_cs_changeaddress()
+            cs_spendaddresses = self.app.wallet.db.get('cs_spendaddresses', None)
+            if not cs_changeaddress or not cs_spendaddresses:
+                return
+        invoice = self.read_invoice(is_zap)
         if not invoice:
             return
-        self.do_pay_invoice(invoice)
+        self.do_pay_invoice(invoice, is_zap)
 
-    def do_pay_invoice(self, invoice):
+    def do_pay_invoice(self, invoice, is_zap=False):
         if invoice.is_lightning():
             if self.app.wallet.lnworker:
                 amount_sat = invoice.get_amount_sat()
@@ -420,7 +472,7 @@ class SendScreen(CScreen, Logger):
             else:
                 self.app.show_error(_("Lightning payments are not available for this wallet"))
         else:
-            self._do_pay_onchain(invoice)
+            self._do_pay_onchain(invoice, is_zap)
 
     def _do_pay_lightning(self, invoice: Invoice, pw) -> None:
         amount_msat = invoice.get_amount_msat()
@@ -434,10 +486,10 @@ class SendScreen(CScreen, Logger):
         self.save_invoice(invoice)
         threading.Thread(target=pay_thread).start()
 
-    def _do_pay_onchain(self, invoice: Invoice) -> None:
+    def _do_pay_onchain(self, invoice: Invoice, is_zap=False) -> None:
         outputs = invoice.outputs
         amount = sum(map(lambda x: x.value, outputs)) if not any(parse_max_spend(x.value) for x in outputs) else '!'
-        coins = self.app.wallet.get_spendable_coins(None)
+        coins = self.app.wallet.get_spendable_coins(None, is_zap=is_zap)
         make_tx = lambda rbf: self.app.wallet.make_unsigned_transaction(coins=coins, outputs=outputs, rbf=rbf)
         on_pay = lambda tx: self.app.protected(_('Send payment?'), self.send_tx, (tx, invoice))
         d = ConfirmTxDialog(self.app, amount=amount, make_tx=make_tx, on_pay=on_pay)

@@ -1,13 +1,13 @@
 [app]
 
 # (str) Title of your application
-title = Electrum
+title = Ghost Electrum
 
 # (str) Package name
-package.name = Electrum
+package.name = GhostElectrum
 
 # (str) Package domain (needed for android/ios packaging)
-package.domain = org.electrum
+package.domain = org.ghost
 
 # (str) Source code where the main.py live
 source.dir = .

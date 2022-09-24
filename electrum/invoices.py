@@ -124,6 +124,15 @@ class Invoice(StoredObject):
         else:
             return self.outputs[0].address
 
+
+    def get_script(self) -> Optional[str]:
+        """returns the first address, to be displayed in GUI"""
+        if self.is_lightning():
+            return self._lnaddr.get_fallback_address() or None
+        else:
+            return self.outputs[0].witness_script
+
+
     def get_outputs(self):
         if self.is_lightning():
             address = self.get_address()
