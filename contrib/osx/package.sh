@@ -24,7 +24,7 @@ export PATH=$PATH:~/bin
 
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 Electrum.app"
+    echo "Usage: $0 GhostElectrum.app"
     exit -127
 fi
 
@@ -88,8 +88,8 @@ ${genisoimage} \
     -o Electrum_uncompressed.dmg \
     /tmp/electrum-macos/image || fail "Unable to create uncompressed dmg"
 
-dmg dmg Electrum_uncompressed.dmg electrum-$VERSION.dmg || fail "Unable to create compressed dmg"
-rm Electrum_uncompressed.dmg
+dmg dmg GhostElectrum_uncompressed.dmg Ghostelectrum-$VERSION.dmg || fail "Unable to create compressed dmg"
+rm GhostElectrum_uncompressed.dmg
 
 echo "Done."
 sha256sum electrum-$VERSION.dmg

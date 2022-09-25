@@ -17,7 +17,7 @@ from electrum.invoices import (PR_DEFAULT_EXPIRATION_WHEN_CREATING,
                                pr_expiration_values, Invoice)
 from electrum import bitcoin, constants
 from electrum import lnutil
-from electrum.transaction import tx_from_any, PartialTxOutput, PartialTransaction
+from electrum.transaction import tx_from_any, PartialTxOutput
 from electrum.util import (parse_URI, InvalidBitcoinURI, TxMinedInfo, maybe_extract_lightning_payment_identifier,
                            InvoiceError, format_time, parse_max_spend, BITCOIN_BIP21_URI_SCHEME)
 from electrum.lnaddr import lndecode, LnInvoiceException

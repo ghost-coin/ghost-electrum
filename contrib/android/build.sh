@@ -61,8 +61,8 @@ fi
 DOCKER_RUN_FLAGS=""
 
 if [[ "$3" == "release" ]] ; then
-    info "'release' mode selected. mounting ~/.keystore inside container."
-    DOCKER_RUN_FLAGS="-v $HOME/.keystore:/home/user/.keystore"
+    info "'release' mode selected. mounting ~/AndroidKeystores/.keystore inside container."
+    DOCKER_RUN_FLAGS="-v $HOME/AndroidKeystores/my.keystore:/home/user/.keystore"
 fi
 
 info "building binary..."

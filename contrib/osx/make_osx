@@ -5,7 +5,7 @@ set -e
 # Parameterize
 PYTHON_VERSION=3.9.11
 BUILDDIR=/tmp/electrum-build
-PACKAGE=Electrum
+PACKAGE=GhostElectrum
 GIT_REPO=https://github.com/spesmilo/electrum
 
 export GCC_STRIP_BINARIES="1"
@@ -246,10 +246,10 @@ cp -r "dist/$PACKAGE.app" dist/dmg_release/
 pushd "dist/dmg_release"
 ln -s /Applications
 popd
-hdiutil create -fs HFS+ -volname "$PACKAGE" -srcfolder "dist/dmg_release" dist/electrum-$VERSION.dmg || fail "Could not create .DMG"
+hdiutil create -fs HFS+ -volname "$PACKAGE" -srcfolder "dist/dmg_release" dist/ghostelectrum-$VERSION.dmg || fail "Could not create .DMG"
 rm -r "dist/dmg_release"
 
-DoCodeSignMaybe ".DMG" "dist/electrum-${VERSION}.dmg"
+DoCodeSignMaybe ".DMG" "dist/ghostelectrum-${VERSION}.dmg"
 
 if [ -z "$CODESIGN_CERT" ]; then
     warn "App was built successfully but was not code signed. Users may get security warnings from macOS."
