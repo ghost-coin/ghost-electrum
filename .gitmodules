@@ -6,4 +6,4 @@
 	url = https://github.com/spesmilo/electrum-http.git
 [submodule "electrum/gui/kivy/theming/atlas"]
 	path = electrum/gui/kivy/theming/atlas
-	url = https://github.com/spesmilo/electrum-kivy-atlas
+	url = https://github.com/bleach86/electrum-kivy-atlas
