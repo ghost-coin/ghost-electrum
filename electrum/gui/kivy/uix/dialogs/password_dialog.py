@@ -109,7 +109,7 @@ Builder.load_string('''
 
 <PincodeDialog@Popup>
     id: popup
-    title: 'Electrum'
+    title: 'Ghost Electrum'
     message: ''
     basename:''
     BoxLayout:
