@@ -27,7 +27,7 @@ Builder.load_string('''
 
 <SettingsDialog@Popup>
     id: settings
-    title: _('Electrum Settings')
+    title: _('Ghost Electrum Settings')
     has_pin_code: False
     use_encryption: False
     enable_toggle_use_recoverable_channels: False

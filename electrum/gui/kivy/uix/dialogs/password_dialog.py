@@ -25,7 +25,7 @@ Builder.load_string('''
 
 <PasswordDialog@Popup>
     id: popup
-    title: 'Electrum'
+    title: 'Ghost Electrum'
     message: ''
     basename:''
     is_change: False

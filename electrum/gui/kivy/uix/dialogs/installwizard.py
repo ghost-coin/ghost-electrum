@@ -70,7 +70,7 @@ Builder.load_string('''
     size_hint: None, None
     canvas.before:
         Color:
-            rgba: .239, .588, .882, 1
+            rgba: .305, .309, .309, 1
         Rectangle:
             size: Window.size
 
@@ -94,7 +94,7 @@ Builder.load_string('''
                 size_hint: 1, None
                 height: self.texture_size[1] if self.opacity else 0
                 font_size: '33sp'
-                font_name: f'{KIVY_GUI_PATH}/data/fonts/tron/Tr2n.ttf'
+                font_name: f'{KIVY_GUI_PATH}/data/fonts/alfphabet/Alfphabet-IV.ttf'
         GridLayout:
             cols: 1
             id: crcontent
