@@ -219,7 +219,7 @@ class SettingsDialog(QDialog, QtEventListener):
         cs_wallet_value = QLabel(self.wallet.basename())
         cs_widgets.append((cs_wallet_label, cs_wallet_value))
         msg = _('Coldstaking change address.') + '\n\n'\
-              + 'For more information, see https://particl.wiki/tutorial/staking/cold-staking/'
+              + 'For more information, see https://ghostveterans.com/staking/'
         cs_changeaddress_label = HelpLabel(_('Coldstaking Change Address') + ':', msg)
         cs_changeaddress = self.wallet.db.get('cs_changeaddress','')
         self.cs_changeaddress_e = QLineEdit(cs_changeaddress)
@@ -249,7 +249,7 @@ class SettingsDialog(QDialog, QtEventListener):
               + 'Change will only be sent to an address from the list if any are set.\n'\
               + 'Listed addresses must be spendable by the wallet.\n'\
               + 'Add one per line. Address will be selected randomly when creating transactions.\n'\
-              + 'For more information, see https://particl.wiki/tutorial/staking/cold-staking/'
+              + 'For more information, see https://ghostveterans.com/staking/'
         cs_spendaddresses_label = HelpLabel(_('Coldstaking Spend Addresses') + ':', msg)
         cs_spendaddresses = self.wallet.db.get('cs_spendaddresses','')
         self.cs_spendaddresses = QPlainTextEdit(cs_spendaddresses)
