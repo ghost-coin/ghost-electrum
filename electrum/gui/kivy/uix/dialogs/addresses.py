@@ -60,7 +60,7 @@ Builder.load_string('''
     foreground_color: 1, 1, 1, 1
     canvas.before:
         Color:
-            rgba: (0.9, .498, 0.745, 1) if self.state == 'down' else self.background_color
+            rgba: (.305, .309, .309, 1) if self.state == 'down' else self.background_color
         Rectangle:
             size: self.size
             pos: self.pos
