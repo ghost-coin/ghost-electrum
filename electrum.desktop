@@ -3,7 +3,7 @@
 
 [Desktop Entry]
 Comment=Lightweight Ghost Client
-Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; electrum %u"
+Exec=sh -c "PATH=\"\\$HOME/.local/bin:\\$PATH\"; ghostelectrum %u"
 GenericName[en_US]=Ghost Wallet
 GenericName=Bitcoin Wallet
 Icon=electrum
