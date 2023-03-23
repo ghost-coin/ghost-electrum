@@ -2252,13 +2252,16 @@ class Abstract_Wallet(ABC, Logger, EventListener):
             for k in self.get_keystores():
                 if k.can_sign_txin(txin):
                     return True
-            if len(constant_cs_change_addrs) > 0:
-                new_change_addrs = []
-                for addr in change_addrs:
-                    hash160 = ripemd(random.choice(constant_cs_change_addrs))
-                    addr_p2pkh = hash160_to_p2pkh(hash160, net=constants.net)
-                    new_change_addrs.append(addr_p2pkh)
-                change_addrs = new_change_addrs
+            cs_spendaddresses = self.db.get('cs_spendaddresses', None)
+            if cs_spendaddresses is not None:
+                constant_cs_change_addrs = process_cs_spend_addrs(cs_spendaddresses)
+                if len(constant_cs_change_addrs) > 0:
+                    new_change_addrs = []
+                    for addr in change_addrs:
+                        hash160 = ripemd(random.choice(constant_cs_change_addrs))
+                        addr_p2pkh = hash160_to_p2pkh(hash160, net=constants.net)
+                        new_change_addrs.append(addr_p2pkh)
+                    change_addrs = new_change_addrs
         if self.is_swap_tx(tx):
             return True
         return False
